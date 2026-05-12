@@ -1,6 +1,6 @@
 const STORAGE_KEYS = {
-  AUTH_TOKEN: 'authToken',
-  USER_ID: 'userID',
+  AUTH_TOKEN: 'token',
+  USER_ID: 'user_id',
   DEVICE_INFO: 'deviceInfo',
   DEVICE_UNIQUE_ID: 'deviceUniqueId',
   ATTENDANCE_QUEUE: 'attendanceSubmissionQueue',

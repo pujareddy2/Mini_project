@@ -54,13 +54,7 @@ const styles = StyleSheet.create({
     marginVertical: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    shadowColor: '#0f172a',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+    boxShadow: '0 8px 16px rgba(15, 23, 42, 0.06)',
   },
   passedBorder: {
     borderLeftColor: '#22c55e',

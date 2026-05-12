@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useContext, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AppButton from '../components/AppButton';
 import AppHeader from '../components/AppHeader';
@@ -10,17 +10,36 @@ import ScreenLayout from '../components/ScreenLayout';
 import { AlertsContext } from '../context/AlertsContext';
 import ROUTES from '../navigation/routes';
 import { getDashboardData } from '../services/dashboardService';
+import { getFacultyStudents } from '../services/facultyService';
+import { captureGPS } from '../services/validationService';
 import { COLORS, RADIUS, SPACING } from '../theme';
 import STORAGE_KEYS from '../utils/storageKeys';
+
+import { BASE_URL } from '../config';
+import QRCode from 'react-native-qrcode-svg';
 
 function HomeScreen({ navigation }) {
   const { unreadCount, inAppToast, dismissInAppToast } = useContext(AlertsContext);
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+  const [dashboardError, setDashboardError] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userRole, setUserRole] = useState('student');
+  const [facultySessionId, setFacultySessionId] = useState(null);
+  const [facultyQrToken, setFacultyQrToken] = useState('');
+  const [countdown, setCountdown] = useState(60);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [facultyStudents, setFacultyStudents] = useState([]);
+  const [isRefreshingStudents, setIsRefreshingStudents] = useState(false);
+  const [roomName, setRoomName] = useState('Hall A');
 
   useEffect(() => {
     let isMounted = true;
+    async function checkRole() {
+      const role = await AsyncStorage.getItem('role');
+      if (isMounted) setUserRole(role || 'student');
+    }
+    checkRole();
 
     async function loadDashboard() {
       setIsLoadingDashboard(true);
@@ -29,9 +48,10 @@ function HomeScreen({ navigation }) {
         if (isMounted) {
           setDashboardData(data);
         }
-      } catch {
+      } catch (err) {
         if (isMounted) {
           setDashboardData(null);
+          setDashboardError(err.message);
         }
       } finally {
         if (isMounted) {
@@ -40,7 +60,20 @@ function HomeScreen({ navigation }) {
       }
     }
 
+    async function loadFacultyData() {
+      const role = await AsyncStorage.getItem('role');
+      if (role === 'faculty') {
+        try {
+          const students = await getFacultyStudents();
+          if (isMounted) setFacultyStudents(students);
+        } catch (err) {
+          console.log('Error loading faculty data:', err);
+        }
+      }
+    }
+
     loadDashboard();
+    loadFacultyData();
 
     return () => {
       isMounted = false;
@@ -48,7 +81,8 @@ function HomeScreen({ navigation }) {
   }, []);
 
   const attendanceColor = useMemo(() => {
-    const percentage = dashboardData?.attendancePercentage ?? 0;
+    if (!dashboardData || dashboardData.total_classes === 0) return '#64748b';
+    const percentage = dashboardData?.attendance_percentage ?? 0;
 
     if (percentage > 85) {
       return '#0f766e';
@@ -88,6 +122,72 @@ function HomeScreen({ navigation }) {
     navigation.replace(ROUTES.LOGIN);
   }
 
+  async function handleStartSession() {
+    setIsStartingSession(true);
+    try {
+      // Capture faculty's current location to set the classroom anchor
+      const gps = await captureGPS();
+      
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}/session/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          subject: "Demo Class",
+          end_time: "2026-12-31T23:59:59",
+          classroom_lat: gps.latitude || 0.0,
+          classroom_lon: gps.longitude || 0.0,
+          room_name: roomName,
+          wifi_ssid: "D-Link_DIR-615 3"
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Failed to start session');
+      setFacultySessionId(data.id);
+      setFacultyQrToken(data.qr_token);
+      setCountdown(60);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsStartingSession(false);
+    }
+  }
+
+  async function refreshQR() {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}/session/qr/${facultySessionId}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFacultyQrToken(data.qr_token);
+      }
+    } catch (err) {
+      console.log('Error refreshing QR:', err);
+    }
+  }
+
+  useEffect(() => {
+    let timerId;
+    if (userRole === 'faculty' && facultySessionId) {
+      timerId = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            refreshQR();
+            return 60;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timerId);
+  }, [userRole, facultySessionId]);
+
   function NavCard({ title, subtitle, onPress }) {
     return (
       <Pressable onPress={onPress} style={styles.navCard}>
@@ -126,7 +226,15 @@ function HomeScreen({ navigation }) {
         ) : !dashboardData ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyIcon}>📊</Text>
-            <Text style={styles.emptyText}>No attendance data yet</Text>
+            <Text style={styles.emptyText}>{dashboardError ? `Error: ${dashboardError}` : 'No attendance data yet'}</Text>
+            <AppButton 
+              label="Retry" 
+              onPress={() => loadDashboard()} 
+              style={{ marginTop: 20, width: 200 }} 
+            />
+            <Pressable onPress={handleLogout} disabled={isLoggingOut} style={[styles.logoutWrap, { marginTop: 10 }]}>
+              <Text style={styles.logoutText}>{isLoggingOut ? 'Logging out...' : 'Logout'}</Text>
+            </Pressable>
           </View>
         ) : (
           <>
@@ -135,7 +243,9 @@ function HomeScreen({ navigation }) {
                 <View style={styles.heroCopy}>
                   <Text style={styles.heroGreeting}>{greeting}, {dashboardData.name.split(' ')[0]}</Text>
                   <Text style={styles.heroName}>{dashboardData.name}</Text>
-                  <Text style={styles.heroSubtitle}>Last marked: {dashboardData.lastMarkedLabel}</Text>
+                  {userRole !== 'faculty' && (
+                    <Text style={styles.heroSubtitle}>Last marked: {dashboardData.lastMarkedLabel}</Text>
+                  )}
                 </View>
                 <Pressable style={styles.alertBell} onPress={() => navigation.navigate(ROUTES.ALERTS)}>
                   <Text style={styles.alertBellIcon}>🔔</Text>
@@ -151,20 +261,117 @@ function HomeScreen({ navigation }) {
               </View>
             </Card>
 
+            {userRole === 'faculty' ? (
+              <>
+                <Card style={{ marginTop: 12, alignItems: 'center', gap: 16 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Faculty Controls</Text>
+                  </View>
+                  {!facultySessionId ? (
+                    <View style={{ width: '100%', gap: 10 }}>
+                      <View style={{ gap: 4 }}>
+                        <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>CLASSROOM / ROOM NAME</Text>
+                        <View style={{ 
+                          backgroundColor: '#f1f5f9', 
+                          borderRadius: 8, 
+                          padding: 12,
+                          borderWidth: 1,
+                          borderColor: '#e2e8f0'
+                        }}>
+                          <TextInput 
+                            value={roomName}
+                            onChangeText={setRoomName}
+                            placeholder="e.g. Lab 2, Hall A"
+                            style={{ fontSize: 16, color: '#0f172a' }}
+                          />
+                        </View>
+                      </View>
+                      <AppButton 
+                        label={isStartingSession ? "Starting..." : "Start New Session"} 
+                        onPress={handleStartSession} 
+                        loading={isStartingSession}
+                        style={{ width: '100%' }}
+                      />
+                    </View>
+                  ) : (
+                    <View style={{ alignItems: 'center', width: '100%', gap: 12 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '600' }}>Scan to Mark Attendance</Text>
+                      <View style={{ padding: 16, backgroundColor: 'white', borderRadius: 12 }}>
+                        <QRCode value={facultyQrToken} size={250} />
+                      </View>
+                      <Text style={{ fontSize: 18, color: '#eab308', fontWeight: 'bold' }}>Refreshes in: {countdown}s</Text>
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>Raw Token for manual entry:</Text>
+                      <Text style={{ fontSize: 10, color: '#000' }} selectable>{facultyQrToken}</Text>
+                    </View>
+                  )}
+                </Card>
+
+                <Card style={{ marginTop: 12, gap: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Students Registered</Text>
+                    <Pressable 
+                      onPress={async () => {
+                        setIsRefreshingStudents(true);
+                        try {
+                          const data = await getFacultyStudents();
+                          setFacultyStudents(data);
+                        } finally {
+                          setIsRefreshingStudents(false);
+                        }
+                      }}
+                      style={{ padding: 4 }}
+                    >
+                      <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '600' }}>
+                        {isRefreshingStudents ? 'Refreshing...' : 'Refresh List'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  
+                  {facultyStudents.length === 0 ? (
+                    <Text style={{ color: '#64748b', textAlign: 'center', paddingVertical: 10 }}>No students registered to you yet.</Text>
+                  ) : (
+                    facultyStudents.map((stu) => (
+                      <View key={stu.student_id} style={{ 
+                        flexDirection: 'row', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        paddingVertical: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#f1f5f9'
+                      }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '600', fontSize: 14 }}>{stu.name}</Text>
+                          <Text style={{ fontSize: 12, color: '#64748b' }}>
+                            Last: {stu.latest_status ? (stu.latest_status === 'valid' ? '✅ Present' : '❌ Rejected') : 'None'}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.primary }}>
+                            {stu.total_records > 0 ? `${Math.round((stu.total_present / stu.total_records) * 100)}%` : '0%'}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: '#64748b' }}>{stu.total_present}/{stu.total_records} classes</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </Card>
+              </>
+            ) : null}
+
             <View style={styles.quickStatsRow}>
               <LinearGradient colors={['#ecfdf3', '#ffffff']} style={[styles.quickStatCard, styles.presentTint]}>
                 <Text style={styles.statIcon}>✅</Text>
-                <Text style={styles.quickStatValue}>{dashboardData.presentCount}</Text>
+                <Text style={styles.quickStatValue}>{dashboardData.present}</Text>
                 <Text style={styles.quickStatLabel}>Present</Text>
               </LinearGradient>
               <LinearGradient colors={['#fef2f2', '#ffffff']} style={[styles.quickStatCard, styles.absentTint]}>
                 <Text style={styles.statIcon}>❌</Text>
-                <Text style={styles.quickStatValue}>{dashboardData.absentCount}</Text>
+                <Text style={styles.quickStatValue}>{dashboardData.rejected}</Text>
                 <Text style={styles.quickStatLabel}>Absent</Text>
               </LinearGradient>
               <LinearGradient colors={['#eff6ff', '#ffffff']} style={[styles.quickStatCard, styles.totalTint]}>
                 <Text style={styles.statIcon}>📚</Text>
-                <Text style={styles.quickStatValue}>{dashboardData.totalClasses}</Text>
+                <Text style={styles.quickStatValue}>{dashboardData.total_classes}</Text>
                 <Text style={styles.quickStatLabel}>Total</Text>
               </LinearGradient>
             </View>
@@ -172,10 +379,12 @@ function HomeScreen({ navigation }) {
             <Card style={styles.attendanceCard}>
               <Text style={styles.sectionKicker}>Overall attendance</Text>
               <View style={styles.attendanceRow}>
-                <Text style={[styles.attendanceValue, { color: attendanceColor }]}>{dashboardData.attendancePercentage}%</Text>
-                <Text style={styles.attendanceHint}>{dashboardData.presentCount}/{dashboardData.totalClasses} classes</Text>
+                <Text style={[styles.attendanceValue, { color: attendanceColor }]}>
+                  {dashboardData.total_classes > 0 ? `${dashboardData.attendance_percentage}%` : 'N/A'}
+                </Text>
+                <Text style={styles.attendanceHint}>{dashboardData.present}/{dashboardData.total_classes} classes</Text>
               </View>
-              <ProgressBar value={dashboardData.attendancePercentage} />
+              {dashboardData.total_classes > 0 && <ProgressBar value={dashboardData.attendance_percentage} />}
               <Text style={styles.minRequired}>Minimum required: 75%</Text>
             </Card>
 
@@ -197,11 +406,13 @@ function HomeScreen({ navigation }) {
               />
             </View>
 
-            <AppButton
-              label="Start Attendance Scan"
-              onPress={() => navigation.navigate(ROUTES.SCAN)}
-              style={styles.scanButton}
-            />
+            {userRole !== 'faculty' && (
+              <AppButton
+                label="Start Attendance Scan"
+                onPress={() => navigation.navigate(ROUTES.SCAN)}
+                style={styles.scanButton}
+              />
+            )}
 
             <Pressable onPress={handleLogout} disabled={isLoggingOut} style={styles.logoutWrap}>
               <Text style={styles.logoutText}>{isLoggingOut ? 'Logging out...' : 'Logout'}</Text>
@@ -283,10 +494,7 @@ const styles = StyleSheet.create({
   heroCard: {
     borderRadius: RADIUS.card,
     padding: 18,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    boxShadow: '0 8px 12px rgba(15, 23, 42, 0.08)',
   },
   heroRow: {
     alignItems: 'center',
@@ -367,10 +575,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
     paddingVertical: 18,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    boxShadow: '0 6px 10px rgba(15, 23, 42, 0.08)',
   },
   statIcon: {
     fontSize: 16,
