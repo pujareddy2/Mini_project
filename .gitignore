@@ -43,3 +43,6 @@ yarn-error.*
 # venv
 venv/
 .venv/
+
+# backend uploads
+saais-backend/uploads/
