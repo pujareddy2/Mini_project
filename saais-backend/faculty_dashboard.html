@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAAIS Faculty Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#f0f4f8;color:#1a202c}
+.hidden{display:none}
+.container{max-width:800px;margin:0 auto;padding:20px}
+h1{color:#2b6cb0;text-align:center;margin-bottom:30px}
+h2{color:#2d3748;margin-bottom:15px}
+.card{background:white;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+input{width:100%;padding:10px 14px;margin-bottom:12px;border:1px solid #cbd5e0;border-radius:8px;font-size:14px}
+button{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;margin-bottom:10px}
+.btn-primary{background:#2b6cb0;color:white}
+.btn-danger{background:#e53e3e;color:white}
+.btn-secondary{background:#718096;color:white}
+.error{color:#e53e3e;font-size:13px;margin-top:8px;text-align:center}
+.qr-wrap{text-align:center;padding:20px}
+.qr-wrap img{width:300px;height:300px;border:4px solid #2b6cb0;border-radius:12px}
+.qr-token{font-size:11px;color:#718096;margin-top:8px;word-break:break-all;padding:0 10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.stat{background:#ebf8ff;border-radius:8px;padding:16px;text-align:center}
+.stat.warn{background:#fffaf0}
+.stat.bad{background:#fff5f5}
+.num{font-size:36px;font-weight:bold;color:#2b6cb0}
+.stat.warn .num{color:#dd6b20}
+.stat.bad .num{color:#e53e3e}
+.lbl{font-size:12px;color:#718096;margin-top:4px}
+.sus-item{background:#fff5f5;border-left:3px solid #e53e3e;padding:10px;margin-bottom:8px;border-radius:4px;font-size:13px}
+.info{background:#ebf8ff;border-radius:8px;padding:12px;margin-bottom:15px;font-size:14px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.sm-btn{background:#718096;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;width:auto}
+</style>
+</head>
+<body>
+
+<div id="loginPage" class="container">
+<h1>SAAIS Faculty Portal</h1>
+<div class="card">
+<h2>Faculty Login</h2>
+<input type="email" id="email" placeholder="faculty@test.com" value="faculty@test.com">
+<input type="password" id="password" placeholder="Password" value="faculty123">
+<button class="btn-primary" onclick="login()">Login</button>
+<p id="loginError" class="error"></p>
+</div>
+</div>
+
+<div id="dashPage" class="container hidden">
+<div class="topbar">
+<h1 style="margin:0">SAAIS Faculty</h1>
+<button class="sm-btn" onclick="logout()">Logout</button>
+</div>
+
+<div id="formCard" class="card">
+<h2>Start Attendance Session</h2>
+<input type="text" id="subject" placeholder="Subject Name" value="Test Subject">
+<input type="datetime-local" id="endTime">
+<input type="number" id="lat" placeholder="Latitude" value="17.385" step="0.0001">
+<input type="number" id="lon" placeholder="Longitude" value="78.4867" step="0.0001">
+<input type="text" id="wifi" placeholder="WiFi SSID" value="D-Link DIR-615 3">
+<button class="btn-primary" onclick="startSession()">Start Session & Generate QR</button>
+<p id="sessionError" class="error"></p>
+</div>
+
+<div id="sessionCard" class="card hidden">
+<h2>Active Session</h2>
+<div id="sessionInfo" class="info"></div>
+<div class="qr-wrap">
+<img id="qrImg" src="" alt="QR Code">
+<p class="qr-token" id="qrToken"></p>
+</div>
+<h2>Live Attendance</h2>
+<div class="stats">
+<div class="stat"><div class="num" id="presentCount">0</div><div class="lbl">Present</div></div>
+<div class="stat warn"><div class="num" id="suspiciousCount">0</div><div class="lbl">Suspicious</div></div>
+<div class="stat bad"><div class="num" id="rejectedCount">0</div><div class="lbl">Rejected</div></div>
+</div>
+<div id="susList"></div>
+<button class="btn-danger" onclick="endSession()">End Session</button>
+</div>
+</div>
+
+<script>
+const BASE = 'http://192.168.0.106:8080';
+let token = localStorage.getItem('faculty_token');
+let currentSessionId = null;
+let refreshTimer = null;
+
+window.onload = function() {
+  const d = new Date();
+  d.setHours(d.getHours() + 2);
+  document.getElementById('endTime').value = d.toISOString().slice(0,16);
+  if(token) showDash();
+};
+
+async function login() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  try {
+    const r = await fetch(BASE+'/auth/student/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email, password, device_id:'web'})
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.detail || 'Login failed');
+    token = d.token;
+    localStorage.setItem('faculty_token', token);
+    showDash();
+  } catch(e) {
+    document.getElementById('loginError').textContent = e.message;
+  }
+}
+
+function showDash() {
+  document.getElementById('loginPage').classList.add('hidden');
+  document.getElementById('dashPage').classList.remove('hidden');
+}
+
+function logout() {
+  localStorage.removeItem('faculty_token');
+  token = null;
+  if(refreshTimer) clearInterval(refreshTimer);
+  document.getElementById('dashPage').classList.add('hidden');
+  document.getElementById('loginPage').classList.remove('hidden');
+}
+
+async function startSession() {
+  const subject = document.getElementById('subject').value;
+  const endTime = document.getElementById('endTime').value;
+  const lat = parseFloat(document.getElementById('lat').value);
+  const lon = parseFloat(document.getElementById('lon').value);
+  const wifi = document.getElementById('wifi').value;
+
+  if(!subject || !endTime) {
+    document.getElementById('sessionError').textContent = 'Please fill all fields';
+    return;
+  }
+
+  try {
+    const r = await fetch(BASE+'/session/start', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body: JSON.stringify({
+        subject,
+        end_time: new Date(endTime).toISOString(),
+        classroom_lat: lat,
+        classroom_lon: lon,
+        wifi_ssid: wifi
+      })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.detail || 'Failed to start session');
+    currentSessionId = d.id;
+    showSession(d);
+  } catch(e) {
+    document.getElementById('sessionError').textContent = e.message;
+  }
+}
+
+function showSession(sess) {
+  document.getElementById('formCard').classList.add('hidden');
+  document.getElementById('sessionCard').classList.remove('hidden');
+  document.getElementById('sessionInfo').innerHTML =
+    '<b>Session ID:</b> '+sess.id+' | <b>Subject:</b> '+sess.subject+' | <b>Status:</b> Active';
+  document.getElementById('qrImg').src = BASE+'/session/qr-image/'+sess.id+'?t='+Date.now()+'&auth='+token;
+  document.getElementById('qrToken').textContent = 'Token: '+sess.qr_token;
+  refreshAttendance();
+  refreshTimer = setInterval(refreshAttendance, 10000);
+}
+
+async function refreshAttendance() {
+  if(!currentSessionId) return;
+  try {
+    const r = await fetch(BASE+'/dashboard/session/'+currentSessionId+'/live', {
+      headers:{'Authorization':'Bearer '+token}
+    });
+    const d = await r.json();
+    document.getElementById('presentCount').textContent = d.present || 0;
+    document.getElementById('suspiciousCount').textContent = d.suspicious || 0;
+    document.getElementById('rejectedCount').textContent = d.rejected || 0;
+    const susList = document.getElementById('susList');
+    if(d.suspicious_list && d.suspicious_list.length > 0) {
+      susList.innerHTML = '<h2>Suspicious Attempts</h2>' +
+        d.suspicious_list.map(s =>
+          '<div class="sus-item">Student ID: '+s.student_id+
+          ' | Score: '+s.confidence_score+
+          ' | Time: '+new Date(s.marked_at).toLocaleTimeString()+'</div>'
+        ).join('');
+    } else {
+      susList.innerHTML = '';
+    }
+  } catch(e) { console.log('Refresh error:', e); }
+}
+
+async function endSession() {
+  if(!currentSessionId) return;
+  if(!confirm('End this session?')) return;
+  try {
+    const r = await fetch(BASE+'/session/end/'+currentSessionId, {
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token}
+    });
+    const d = await r.json();
+    if(refreshTimer) clearInterval(refreshTimer);
+    alert('Session ended! Present: '+d.summary.present+
+          ', Suspicious: '+d.summary.suspicious+
+          ', Rejected: '+d.summary.rejected);
+    currentSessionId = null;
+    document.getElementById('sessionCard').classList.add('hidden');
+    document.getElementById('formCard').classList.remove('hidden');
+    document.getElementById('sessionError').textContent = '';
+  } catch(e) { alert('Error ending session: '+e.message); }
+}
+</script>
+</body>
+</html>

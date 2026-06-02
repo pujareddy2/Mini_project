@@ -29,6 +29,7 @@ function ScanScreen({ navigation }) {
   const [manualToken, setManualToken] = useState('');
   const [scanState, setScanState] = useState('scanning');
   const [isValidatingToken, setIsValidatingToken] = useState(false);
+  const [inputMode, setInputMode] = useState(Platform.OS === 'web' ? 'manual' : 'camera');
 
   const framePulse = useRef(new Animated.Value(0.25)).current;
   const scanLine = useRef(new Animated.Value(0)).current;
@@ -123,11 +124,17 @@ function ScanScreen({ navigation }) {
       }
 
       try {
-        navigation.navigate(ROUTES.PROCESSING, {
-          qrToken: token,
-          sessionData: response,
-          qrPrevalidated: true,
-          qrVerifiedData: response,
+        let parsedToken = token;
+        let originalSessionId = null;
+        try {
+          const parsed = JSON.parse(token);
+          parsedToken = parsed.qr_token;
+          originalSessionId = parsed.session_id;
+        } catch {}
+
+        navigation.navigate(ROUTES.CAMERA_CAPTURE, {
+          token: parsedToken,
+          sessionId: response.id || response.session_id || originalSessionId,
         });
       } catch {
         setScannerError('Something went wrong. Try again');
@@ -162,11 +169,11 @@ function ScanScreen({ navigation }) {
     setManualToken('');
   }
 
-  function renderWebFallback() {
+  function renderManualEntry() {
     return (
       <Card style={styles.webFallbackWrap}>
-        <Text style={styles.helpText}>QR scanning is not supported on web</Text>
-        <Text style={styles.helpSubText}>Use mobile for real-time camera scanning.</Text>
+        <Text style={styles.helpText}>Manual Entry</Text>
+        <Text style={styles.helpSubText}>Type or paste the session token.</Text>
 
         <TextInput
           value={manualToken}
@@ -206,8 +213,8 @@ function ScanScreen({ navigation }) {
   }
 
   function renderScannerBody() {
-    if (Platform.OS === 'web') {
-      return renderWebFallback();
+    if (inputMode === 'manual') {
+      return renderManualEntry();
     }
 
     if (hasPermission === null) {
@@ -247,23 +254,23 @@ function ScanScreen({ navigation }) {
             autofocus="on"
           />
 
-          <View pointerEvents="none" style={styles.maskTop} />
-          <View pointerEvents="none" style={styles.maskBottom} />
-          <View pointerEvents="none" style={styles.maskLeft} />
-          <View pointerEvents="none" style={styles.maskRight} />
+          <View style={[styles.maskTop, { pointerEvents: 'none' }]} />
+          <View style={[styles.maskBottom, { pointerEvents: 'none' }]} />
+          <View style={[styles.maskLeft, { pointerEvents: 'none' }]} />
+          <View style={[styles.maskRight, { pointerEvents: 'none' }]} />
 
-          <Animated.View pointerEvents="none" style={[styles.scanGlow, { opacity: framePulse }]} />
-          <View pointerEvents="none" style={styles.scanFrame} />
-          <View pointerEvents="none" style={styles.cornerTopLeft} />
-          <View pointerEvents="none" style={styles.cornerTopRight} />
-          <View pointerEvents="none" style={styles.cornerBottomLeft} />
-          <View pointerEvents="none" style={styles.cornerBottomRight} />
+          <Animated.View style={[styles.scanGlow, { opacity: framePulse, pointerEvents: 'none' }]} />
+          <View style={[styles.scanFrame, { pointerEvents: 'none' }]} />
+          <View style={[styles.cornerTopLeft, { pointerEvents: 'none' }]} />
+          <View style={[styles.cornerTopRight, { pointerEvents: 'none' }]} />
+          <View style={[styles.cornerBottomLeft, { pointerEvents: 'none' }]} />
+          <View style={[styles.cornerBottomRight, { pointerEvents: 'none' }]} />
 
           <Animated.View
-            pointerEvents="none"
             style={[
               styles.scanLine,
               {
+                pointerEvents: 'none',
                 transform: [{
                   translateY: scanLine.interpolate({
                     inputRange: [0, 1],
@@ -291,12 +298,27 @@ function ScanScreen({ navigation }) {
     <ScreenLayout>
       <AppHeader title="Verimark" subtitle="Scanner" showBack onBackPress={() => navigation.goBack()} />
 
+      <View style={{ flexDirection: 'row', backgroundColor: '#e2e8f0', borderRadius: 999, padding: 4, marginHorizontal: 20, marginTop: 16 }}>
+        <Pressable 
+          onPress={() => setInputMode('camera')}
+          style={{ flex: 1, paddingVertical: 10, borderRadius: 999, backgroundColor: inputMode === 'camera' ? '#fff' : 'transparent', alignItems: 'center' }}
+        >
+          <Text style={{ fontWeight: inputMode === 'camera' ? '700' : '500', color: inputMode === 'camera' ? '#0f172a' : '#64748b' }}>Scan QR Code</Text>
+        </Pressable>
+        <Pressable 
+          onPress={() => setInputMode('manual')}
+          style={{ flex: 1, paddingVertical: 10, borderRadius: 999, backgroundColor: inputMode === 'manual' ? '#fff' : 'transparent', alignItems: 'center' }}
+        >
+          <Text style={{ fontWeight: inputMode === 'manual' ? '700' : '500', color: inputMode === 'manual' ? '#0f172a' : '#64748b' }}>Enter Code Manually</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.centerWrap}>{renderScannerBody()}</View>
 
       <AppButton
         label="Back to Home"
         onPress={() => navigation.navigate(ROUTES.HOME)}
-        style={styles.backButton}
+        style={[styles.backButton, { marginHorizontal: 20, width: 'auto' }]}
       />
     </ScreenLayout>
   );

@@ -163,16 +163,16 @@ function ErrorScreen({ navigation, route }) {
         <Text style={styles.sectionTitle}>1. Summary</Text>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Campus Location</Text>
-          <Text style={styles.detailValue}>Main Hall - Room 302</Text>
+          <Text style={styles.detailValue}>{result.room_name || 'Classroom area'}</Text>
         </View>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Required Range</Text>
-          <Text style={styles.detailValue}>Within 50 meters</Text>
+          <Text style={styles.detailValue}>Within {result.allowed_range || 30} meters</Text>
         </View>
-        <ProgressBar value={85} trackStyle={styles.errorTrack} barStyle={styles.errorBar} />
+        <ProgressBar value={Math.min(100, Math.round(((result.allowed_range || 30) / (result.distance || 1)) * 100))} trackStyle={styles.errorTrack} barStyle={styles.errorBar} />
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Current Distance</Text>
-          <Text style={styles.distanceValue}>482 meters away</Text>
+          <Text style={styles.distanceValue}>{result.distance || 'Unknown'} meters away</Text>
         </View>
       </Card>
 

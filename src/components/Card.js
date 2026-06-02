@@ -10,13 +10,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     width: '100%',
-    shadowColor: '#0f172a',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
+    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
     elevation: 2,
   },
 });

@@ -71,20 +71,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: SPACING.lg,
     paddingVertical: 14,
-    shadowColor: '#1d4ed8',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    boxShadow: '0 6px 6px rgba(29, 78, 216, 0.2)',
   },
   buttonSecondary: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.3)',
     elevation: 0,
-    shadowOpacity: 0,
+    boxShadow: 'none',
   },
   gradientLayer: {
     alignItems: 'center',

@@ -1,43 +1,73 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import STORAGE_KEYS from '../utils/storageKeys';
+import { BASE_URL } from '../config';
 
-function wait(timeout) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, timeout);
-  });
-}
+export const loginStudent = async (email, password, deviceInfo) => {
+  try {
+    const response = await fetch(`${BASE_URL}/auth/student/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        ...(deviceInfo && deviceInfo.deviceId ? { device_id: deviceInfo.deviceId } : {})
+      }),
+    });
 
-async function loginUser(email, password, deviceInfo) {
-  await wait(900);
+    const data = await response.json();
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const normalizedPassword = password.trim();
-  const registeredStudentRaw = await AsyncStorage.getItem(STORAGE_KEYS.REGISTERED_STUDENT);
-  const registeredStudent = registeredStudentRaw ? JSON.parse(registeredStudentRaw) : null;
+    if (!response.ok) {
+      throw new Error(data.detail || 'Login failed');
+    }
 
-  if (
-    registeredStudent
-    && normalizedEmail === registeredStudent.email.trim().toLowerCase()
-    && normalizedPassword === registeredStudent.password.trim()
-  ) {
-    return {
-      userID: registeredStudent.rollNumber || 'registered-user',
-      token: 'mock-jwt-token',
-      deviceStatus: 'approved',
-      deviceInfo,
-    };
+    if (data.token) {
+      await AsyncStorage.setItem('token', String(data.token));
+    }
+    if (data.role) {
+      await AsyncStorage.setItem('role', String(data.role));
+    }
+    if (data.student_id) {
+      await AsyncStorage.setItem('user_id', String(data.student_id));
+    }
+    if (data.name) {
+      await AsyncStorage.setItem('name', String(data.name));
+    }
+    if (deviceInfo && deviceInfo.deviceId) {
+      await AsyncStorage.setItem('device_id', String(deviceInfo.deviceId));
+    }
+
+    return data;
+  } catch (error) {
+    throw new Error(error.message || 'Login failed');
   }
+};
 
-  if (normalizedEmail === 'student@test.com' && normalizedPassword === '1234') {
-    return {
-      userID: '123',
-      token: 'mock-jwt-token',
-      deviceStatus: 'approved',
-      deviceInfo,
-    };
+export const registerStudent = async (studentProfile) => {
+  try {
+    const response = await fetch(`${BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: studentProfile.name,
+        email: studentProfile.email,
+        password: studentProfile.password,
+        role: 'student',
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Registration failed');
+    }
+
+    return data;
+  } catch (error) {
+    throw new Error(error.message || 'Registration failed');
   }
+};
 
-  throw new Error('Invalid credentials');
-}
-
-export { loginUser };
+export const loginUser = loginStudent;

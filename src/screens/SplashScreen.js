@@ -99,10 +99,7 @@ const styles = StyleSheet.create({
     height: 82,
     justifyContent: 'center',
     marginBottom: 10,
-    shadowColor: '#3b82f6',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
+    boxShadow: '0 10px 14px rgba(59, 130, 246, 0.2)',
     width: 82,
   },
   logoText: {

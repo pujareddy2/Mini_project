@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AppButton from '../components/AppButton';
 import AppHeader from '../components/AppHeader';
 import ROUTES from '../navigation/routes';
-import { loginUser } from '../services/authService';
+import { loginUser, registerStudent } from '../services/authService';
 import ScreenLayout from '../components/ScreenLayout';
 import { SPACING } from '../theme';
 import getDeviceInfo from '../utils/deviceInfo';
@@ -79,7 +79,7 @@ function LoginScreen({ navigation }) {
 
       await AsyncStorage.multiSet([
         [STORAGE_KEYS.AUTH_TOKEN, response.token],
-        [STORAGE_KEYS.USER_ID, response.userID],
+        [STORAGE_KEYS.USER_ID, String(response.student_id || response.user_id)],
         [STORAGE_KEYS.DEVICE_INFO, JSON.stringify(deviceInfo)],
       ]);
 
@@ -94,14 +94,16 @@ function LoginScreen({ navigation }) {
   async function handlePickPhoto() {
     try {
       setIsUploadingPhoto(true);
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setErrorMessage('Profile photo access is required to upload an image.');
-        return;
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setErrorMessage('Profile photo access is required to upload an image.');
+          return;
+        }
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaType.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
@@ -155,10 +157,14 @@ function LoginScreen({ navigation }) {
         profilePhotoUri,
       };
 
+      await registerStudent(studentProfile);
       await AsyncStorage.setItem(STORAGE_KEYS.REGISTERED_STUDENT, JSON.stringify(studentProfile));
-      setErrorMessage('Registration saved. Use these credentials to log in.');
+      
+      setErrorMessage('Registration successful! You can now log in.');
       setMode('login');
       setPassword('');
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to register account.');
     } finally {
       setIsLoading(false);
     }
@@ -498,13 +504,7 @@ const styles = StyleSheet.create({
   },
   inputFocused: {
     borderColor: '#3b82f6',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
+    boxShadow: '0 0 8px rgba(59, 130, 246, 0.18)',
   },
   pickerWrap: {
     backgroundColor: '#f8fafc',
