@@ -10,6 +10,12 @@ import ValidationItem from '../components/ValidationItem';
 import ROUTES from '../navigation/routes';
 
 const STATUS_META = {
+  valid: {
+    icon: '✔',
+    title: 'Attendance Marked Successfully',
+    accent: '#22C55E',
+    gradient: ['#f0fdf4', '#ecfdf3'],
+  },
   success: {
     icon: '✔',
     title: 'Attendance Marked Successfully',
@@ -44,12 +50,26 @@ function formatTimestamp(value) {
 }
 
 function ResultScreen({ navigation, route }) {
-  const result = route.params?.result;
-  const status = result?.status;
-  const confidence = Number(result?.confidence || 0);
-  const flags = result?.flags || {};
-  const attendanceId = result?.attendanceId || 'N/A';
-  const timestamp = result?.timestamp || Date.now();
+  const { attendanceResult } = route.params || {};
+
+  if (!attendanceResult) {
+    return (
+      <ScreenLayout contentStyle={styles.contentStyle}>
+        <AppHeader title="Verimark" subtitle="Result" />
+        <Card style={styles.missingCard}>
+          <Text style={styles.missingTitle}>Result Missing</Text>
+          <Text style={styles.missingSubtitle}>Could not find attendance result data.</Text>
+          <AppButton label="Go Back" onPress={() => navigation.goBack()} />
+        </Card>
+      </ScreenLayout>
+    );
+  }
+
+  const status = attendanceResult.status;
+  const confidence = Number(attendanceResult.confidence_score || attendanceResult.confidence || 0);
+  const flags = attendanceResult.flags || {};
+  const attendanceId = attendanceResult.attendanceId || 'N/A';
+  const timestamp = attendanceResult.marked_at || attendanceResult.timestamp || Date.now();
 
   const iconScale = useRef(new Animated.Value(0.4)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
@@ -86,9 +106,8 @@ function ResultScreen({ navigation, route }) {
         <AppHeader title="Verimark" subtitle="Result" />
         <Card style={styles.missingCard}>
           <Text style={styles.missingTitle}>Unable to fetch result</Text>
-          <Text style={styles.missingSubtitle}>Please retry attendance submission.</Text>
-          <AppButton label="Retry Attendance" onPress={() => navigation.replace(ROUTES.SCAN)} />
-          <AppButton label="Go to Dashboard" variant="secondary" onPress={() => navigation.replace(ROUTES.HOME)} style={styles.dashboardButton} />
+          <Text style={styles.missingSubtitle}>Status "{status}" is not recognized.</Text>
+          <AppButton label="Go Back" onPress={() => navigation.goBack()} />
         </Card>
       </ScreenLayout>
     );
@@ -104,7 +123,7 @@ function ResultScreen({ navigation, route }) {
         </Animated.View>
 
         <Text style={[styles.heroTitle, { color: statusMeta.accent }]}>{statusMeta.title}</Text>
-        <Text style={styles.heroSubtitle}>{result?.message || 'Verification complete.'}</Text>
+        <Text style={styles.heroSubtitle}>{attendanceResult.message || 'Verification complete.'}</Text>
       </LinearGradient>
 
       <Animated.View style={{ opacity: contentOpacity }}>
@@ -124,8 +143,8 @@ function ResultScreen({ navigation, route }) {
           <ValidationItem
             title={flags.location ? 'Location Verified' : 'Location Failed'}
             status={statusFromFlag(flags.location)}
-            subtitle={flags.location ? 'Campus range confirmed' : 'Outside campus range'}
-            extraInfo={flags.location ? 'Location check passed' : 'Failure reason: Outside campus range'}
+            subtitle={flags.location ? `Room: ${attendanceResult.room_name || 'Classroom'}` : 'Outside campus range'}
+            extraInfo={flags.location ? `Distance: ${attendanceResult.distance ?? 0}m (Allowed: 50m)` : `Distance: ${attendanceResult.distance ?? 'N/A'}m`}
           />
           <ValidationItem
             title={flags.wifi ? 'WiFi Verified' : 'WiFi Failed'}
@@ -138,6 +157,12 @@ function ResultScreen({ navigation, route }) {
             status={statusFromFlag(flags.media)}
             subtitle={flags.media ? 'Camera/media accepted' : 'Media verification rejected'}
             extraInfo={flags.media ? 'Face/media validation passed' : 'Failure reason: Duplicate or unclear media'}
+          />
+          <ValidationItem
+            title={flags.device ? 'Device Verified' : 'Device Failed'}
+            status={statusFromFlag(flags.device)}
+            subtitle={flags.device ? 'Authorized device' : 'Unauthorized device detected'}
+            extraInfo={flags.device ? 'Device check passed' : 'Failure reason: Device ID mismatch'}
           />
         </View>
       </Animated.View>

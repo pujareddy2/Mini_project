@@ -1,31 +1,36 @@
-function wait(timeout) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, timeout);
-  });
-}
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL } from '../config';
 
-async function verifyQR(token) {
-  // API-ready structure: replace with POST /verify-qr
-  // payload example: { token, userID }
-  await wait(900);
+export const verifyQR = async (qrData) => {
+  try {
+    const token = await AsyncStorage.getItem('token');
 
-  const normalizedToken = typeof token === 'string' ? token.trim() : '';
+    let payload;
+    try {
+      // If the QR code contains JSON string like {"qr_token": "...", "session_id": 1}
+      payload = JSON.parse(qrData);
+    } catch {
+      // Fallback if it's just the raw token string
+      payload = { qr_token: qrData };
+    }
 
-  if (!normalizedToken) {
-    return {
-      valid: false,
-      status: 'invalid',
-      message: 'QR token is missing',
-    };
+    const response = await fetch(`${BASE_URL}/session/validate-qr`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'QR validation failed');
+    }
+
+    return data;
+  } catch (error) {
+    throw new Error(error.message || 'QR validation failed');
   }
-
-  return {
-    valid: true,
-    status: 'valid',
-    session: 'DSA Class',
-    time: '09:30 AM',
-    message: 'QR verified successfully',
-  };
-}
-
-export { verifyQR };
+};

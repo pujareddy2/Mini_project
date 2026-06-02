@@ -22,7 +22,7 @@ import { SPACING } from '../theme';
 import { handleError } from '../utils/errorHandler';
 
 function CameraCaptureScreen({ navigation, route }) {
-  const token = route.params?.token;
+  const token = route.params?.qrToken || route.params?.token;
   const cameraRef = useRef(null);
   const [permission] = useCameraPermissions();
   const [isCapturing, setIsCapturing] = useState(false);
@@ -55,7 +55,9 @@ function CameraCaptureScreen({ navigation, route }) {
 
   function goBackToProcessing(data) {
     navigation.navigate(ROUTES.PROCESSING, {
-      token,
+      qrToken: token,
+      photoUri: data.media?.uri,
+      sessionId: route.params?.sessionId,
       ...data,
     });
   }
@@ -91,10 +93,11 @@ function CameraCaptureScreen({ navigation, route }) {
       return;
     }
 
-    goBackToProcessing({
-      media: previewMedia,
+    navigation.navigate(ROUTES.PROCESSING, {
+      qrToken: token,
+      sessionId: route.params?.sessionId,
+      photoUri: previewMedia.uri,
       cameraCancelled: false,
-      captureStamp: previewMedia.timestamp,
     });
   }
 
@@ -105,23 +108,12 @@ function CameraCaptureScreen({ navigation, route }) {
   }
 
   function handleCancelCapture() {
-    goBackToProcessing({
+    navigation.navigate(ROUTES.PROCESSING, {
+      qrToken: token,
+      sessionId: route.params?.sessionId,
+      photoUri: null,
       cameraCancelled: true,
-      captureStamp: Date.now(),
     });
-  }
-
-  if (Platform.OS === 'web') {
-    return (
-      <ScreenLayout contentStyle={styles.contentStyle}>
-        <Card style={styles.permissionCard}>
-          <Text style={styles.errorTitle}>Camera not supported on web</Text>
-          <Text style={styles.subtitle}>Use mobile for secure real-time capture.</Text>
-          <AppButton label="Cancel Capture" variant="secondary" onPress={handleCancelCapture} />
-          {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
-        </Card>
-      </ScreenLayout>
-    );
   }
 
   if (permission?.granted === false) {
@@ -162,7 +154,7 @@ function CameraCaptureScreen({ navigation, route }) {
         ) : (
           <>
             <CameraView ref={cameraRef} style={styles.cameraPreview} />
-            <View pointerEvents="none" style={styles.overlayFrame} />
+            <View style={[styles.overlayFrame, { pointerEvents: 'none' }]} />
           </>
         )}
       </View>

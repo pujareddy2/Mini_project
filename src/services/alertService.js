@@ -1,11 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-
-function buildBaseUrl() {
-  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-  return baseUrl ? baseUrl.replace(/\/$/, '') : null;
-}
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL } from '../config';
 
 function normalizeAlert(alert) {
   return {
@@ -16,29 +13,6 @@ function normalizeAlert(alert) {
     timestamp: alert.timestamp || new Date().toISOString(),
     read: Boolean(alert.read),
   };
-}
-
-function mockAlerts() {
-  const now = Date.now();
-
-  return [
-    {
-      id: 'mock-1',
-      type: 'warning',
-      title: 'Low Attendance',
-      message: 'Your attendance dropped below 75%.',
-      timestamp: new Date(now - 1000 * 60 * 5).toISOString(),
-      read: false,
-    },
-    {
-      id: 'mock-2',
-      type: 'error',
-      title: 'Suspicious Behavior Detected',
-      message: 'Verification was marked under review for your last scan.',
-      timestamp: new Date(now - 1000 * 60 * 30).toISOString(),
-      read: false,
-    },
-  ];
 }
 
 async function requestNotificationPermission() {
@@ -93,19 +67,18 @@ async function getPushToken() {
 }
 
 async function registerDeviceToken(payload) {
-  const baseUrl = buildBaseUrl();
-  if (!baseUrl || !payload?.pushToken) {
-    return {
-      ok: true,
-      message: 'Mock device registration complete',
-    };
-  }
-
   try {
-    const response = await fetch(`${baseUrl}/register-device`, {
+    const token = await AsyncStorage.getItem('token');
+    
+    if (!payload?.pushToken) {
+      return { ok: true, message: 'No push token to register' };
+    }
+
+    const response = await fetch(`${BASE_URL}/register-device`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
@@ -130,46 +103,30 @@ async function registerDeviceToken(payload) {
 }
 
 async function fetchAlerts() {
-  const baseUrl = buildBaseUrl();
-
-  if (!baseUrl) {
-    return {
-      status: 'success',
-      data: mockAlerts().map(normalizeAlert),
-      message: 'Mock alerts loaded',
-    };
-  }
-
   try {
-    const response = await fetch(`${baseUrl}/alerts`, {
+    const token = await AsyncStorage.getItem('token');
+    const user_id = await AsyncStorage.getItem('user_id');
+
+    if (!token || !user_id) {
+      return [];
+    }
+
+    const response = await fetch(`${BASE_URL}/alerts/student/${user_id}`, {
       method: 'GET',
       headers: {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
-      return {
-        status: 'failed',
-        data: [],
-        message: `Unable to fetch alerts (${response.status})`,
-      };
+      return [];
     }
 
     const data = await response.json();
-    const alerts = Array.isArray(data) ? data.map(normalizeAlert) : [];
-
-    return {
-      status: 'success',
-      data: alerts,
-      message: 'Alerts fetched',
-    };
+    return Array.isArray(data) ? data.map(normalizeAlert) : [];
   } catch (error) {
-    return {
-      status: 'failed',
-      data: [],
-      message: error.message || 'Unable to fetch alerts',
-    };
+    return [];
   }
 }
 
@@ -185,20 +142,14 @@ async function sendNotification(alert) {
 }
 
 async function markAlertAsRead(alertId) {
-  const baseUrl = buildBaseUrl();
-
-  if (!baseUrl) {
-    return {
-      ok: true,
-      message: 'Mock read status updated',
-    };
-  }
-
   try {
-    const response = await fetch(`${baseUrl}/alerts/read`, {
+    const token = await AsyncStorage.getItem('token');
+
+    const response = await fetch(`${BASE_URL}/alerts/read`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ id: alertId }),
     });
