@@ -1,138 +1,89 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRoute } from '@react-navigation/native';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppButton from '../components/AppButton';
 import AppHeader from '../components/AppHeader';
 import Card from '../components/Card';
 import ScreenLayout from '../components/ScreenLayout';
 import ROUTES from '../navigation/routes';
 import { verifyQR } from '../services/qrService';
-import { handleError } from '../utils/errorHandler';
+import { captureGPS } from '../services/validationService';
+import { captureWiFi } from '../services/networkService';
+import { uploadMedia, submitAttendance } from '../services/attendanceService';
 import { SPACING } from '../theme';
 
-function wait(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 function ProcessingScreen({ navigation, route }) {
-  const routeFromHook = useRoute();
-  const safeParams = route?.params || routeFromHook?.params || {};
-  const qrToken = typeof safeParams.qrToken === 'string'
-    ? safeParams.qrToken.trim()
-    : typeof safeParams.token === 'string'
-      ? safeParams.token.trim()
-      : '';
-  const sessionData = safeParams.sessionData ?? safeParams.qrVerifiedData ?? null;
-
-  const startedRef = useRef(false);
   const [screenState, setScreenState] = useState('loading');
   const [errorMessage, setErrorMessage] = useState('');
-  const [retryNonce, setRetryNonce] = useState(0);
+
+  const { qrToken } = route.params || {};
 
   function goBackToScan() {
     navigation.replace(ROUTES.SCAN);
   }
 
-  function retryFlow() {
-    startedRef.current = false;
-    setErrorMessage('');
-    setScreenState('loading');
-    setRetryNonce((value) => value + 1);
-  }
-
-  const completeValidation = useCallback(async (response) => {
-    if (startedRef.current) {
-      return;
-    }
-
-    startedRef.current = true;
-
-    try {
-      const timestamp = Date.now();
-      const result = {
-        status: 'success',
-        confidence: 100,
-        message: response?.message || 'Attendance verified',
-        attendanceId: `ATT-${timestamp}`,
-        flags: {
-          location: true,
-          wifi: true,
-          media: true,
-        },
-        submissionPayload: {
-          qrToken,
-          sessionData: response || null,
-        },
-        uploadedMedia: {
-          fileUrl: `web://attendance/${timestamp}`,
-          type: 'photo',
-          originalUri: null,
-          uploadedAt: timestamp,
-        },
-        validationResult: {
-          qr: { status: 'passed' },
-          location: { status: 'passed' },
-          wifi: { status: 'passed' },
-          camera: { status: 'captured' },
-          overallStatus: 'success',
-        },
-        requestId: `${qrToken}-${timestamp}`,
-        timestamp,
-      };
-      await wait(600);
-      navigation.replace(ROUTES.RESULT, { result });
-    } catch (error) {
-      startedRef.current = false;
-      setScreenState('error');
-      setErrorMessage(handleError(error).message || 'Something went wrong');
-    }
-  }, [navigation, qrToken]);
-
   useEffect(() => {
-    let cancelled = false;
-
-    async function runFlow() {
-      if (!qrToken) {
-        setScreenState('invalid');
-        setErrorMessage('Invalid session. Please scan again');
-        return;
-      }
-
-      setScreenState('loading');
-      setErrorMessage('');
-      startedRef.current = false;
-
+    const runAttendanceFlow = async () => {
       try {
-        const response = sessionData || await verifyQR(qrToken);
+        const { qrToken: token, photoUri, cameraCancelled, sessionId: paramSessionId } = route.params || {};
 
-        if (cancelled) {
+        if (!token) {
+          setScreenState('invalid');
+          setErrorMessage('QR Token is missing');
           return;
         }
 
-        if (!response) {
-          throw new Error('No response');
+        // Use photo if available, otherwise skip (camera was cancelled or unavailable)
+        let finalPhotoUri = photoUri || null;
+
+        const studentId = await AsyncStorage.getItem('user_id');
+        const deviceId = await AsyncStorage.getItem('device_id');
+
+        // QR verification — fall back to sessionId from params if verify fails
+        let sessionId = paramSessionId;
+        try {
+          const qrResult = await verifyQR(token);
+          sessionId = paramSessionId || qrResult.session_id;
+        } catch (qrError) {
+          console.log('QR verify failed, using sessionId from params:', paramSessionId);
+          if (!sessionId) {
+            throw new Error('QR verification failed and no session ID available.');
+          }
         }
 
-        await completeValidation(response);
+        const gps = await captureGPS();
+        const wifi = await captureWiFi();
+
+        // Upload media only if photo exists
+        let mediaUrl = 'no_photo';
+        if (finalPhotoUri) {
+          mediaUrl = await uploadMedia(finalPhotoUri);
+        }
+
+        const result = await submitAttendance({
+          session_id: sessionId,
+          qr_token: token,
+          device_id: deviceId || 'web_browser_device',
+          gps_lat: gps.latitude || 0.0,
+          gps_lon: gps.longitude || 0.0,
+          wifi_ssid: wifi.ssid || 'unavailable',
+          bssid: wifi.bssid || '',
+          media_url: mediaUrl
+        });
+
+        navigation.replace(ROUTES.RESULT, { attendanceResult: result });
+
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setScreenState('error');
-        setErrorMessage(handleError(error).message || 'Something went wrong');
-        startedRef.current = false;
+        navigation.replace(ROUTES.ERROR, {
+          error: error.message,
+          canRetry: true,
+          retryRoute: ROUTES.SCAN
+        });
       }
-    }
-
-    runFlow();
-
-    return () => {
-      cancelled = true;
     };
-  }, [completeValidation, qrToken, retryNonce, sessionData]);
+
+    runAttendanceFlow();
+  }, []);
 
   if (screenState === 'invalid') {
     return (
@@ -153,7 +104,6 @@ function ProcessingScreen({ navigation, route }) {
         <Card style={styles.fallbackCard}>
           <Text style={styles.fallbackTitle}>Something went wrong</Text>
           <Text style={styles.fallbackText}>{errorMessage || 'Processing failed unexpectedly.'}</Text>
-          <AppButton label="Retry" onPress={retryFlow} />
           <AppButton label="Go Back" variant="secondary" onPress={goBackToScan} />
         </Card>
       </ScreenLayout>
@@ -258,3 +208,4 @@ const styles = StyleSheet.create({
 });
 
 export default ProcessingScreen;
+

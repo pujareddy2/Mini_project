@@ -35,7 +35,7 @@ function TimetableScreen({ navigation }) {
             </View>
             <View style={styles.timelineBody}>
               <Text style={styles.subjectText}>{item.subject}</Text>
-              <Text style={styles.facultyText}>{item.faculty}</Text>
+              <Text style={styles.classText}>{item.className}</Text>
             </View>
           </Card>
         ))}
@@ -69,10 +69,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     flexDirection: 'row',
     gap: 12,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    boxShadow: '0 6px 10px rgba(15, 23, 42, 0.08)',
   },
   currentClassCard: {
     borderColor: 'rgba(59, 130, 246, 0.4)',
@@ -101,7 +98,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  facultyText: {
+  classText: {
     color: '#64748b',
     fontSize: 12,
   },

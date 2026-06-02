@@ -13,7 +13,7 @@ function AppBackground({ children }) {
         style={styles.gradientLayer}
       />
 
-      <View pointerEvents="none" style={styles.patternLayer}>
+      <View style={[styles.patternLayer, { pointerEvents: 'none' }]}>
         {patternLines.map((_, index) => (
           <View
             key={`line-${index}`}
@@ -27,8 +27,8 @@ function AppBackground({ children }) {
         ))}
       </View>
 
-      <View pointerEvents="none" style={styles.softGlowTop} />
-      <View pointerEvents="none" style={styles.softGlowBottom} />
+      <View style={[styles.softGlowTop, { pointerEvents: 'none' }]} />
+      <View style={[styles.softGlowBottom, { pointerEvents: 'none' }]} />
       <View style={styles.content}>{children}</View>
     </View>
   );

@@ -83,11 +83,11 @@ const ATTENDANCE_DATA = {
     ],
   },
   timetable: [
-    { time: '09:00', subject: 'Cloud Computing', faculty: 'Dr. Rao' },
-    { time: '10:00', subject: 'Compiler Design', faculty: 'Prof. Neha' },
-    { time: '11:15', subject: 'DBMS', faculty: 'Dr. Kumar' },
-    { time: '12:15', subject: 'Lunch Break', faculty: '—' },
-    { time: '01:15', subject: 'Computer Networks', faculty: 'Ms. Priya' },
+    { time: '09:00', subject: 'Cloud Computing', className: 'Section A' },
+    { time: '10:00', subject: 'Compiler Design', className: 'CS-1' },
+    { time: '11:15', subject: 'DBMS', className: 'Lab 2' },
+    { time: '12:15', subject: 'Lunch Break', className: '—' },
+    { time: '01:15', subject: 'Computer Networks', className: 'Section B' },
   ],
   semester: {
     label: 'Semester IV',
