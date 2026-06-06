@@ -33,7 +33,7 @@ function AlertsProvider({ children }) {
 
     try {
       const response = await fetchAlerts();
-      const nextAlerts = response.status === 'success' ? response.data : [];
+      const nextAlerts = Array.isArray(response) ? response : (response && response.status === 'success' ? response.data : []);
 
       if (notifyOnNew) {
         for (const alert of nextAlerts) {

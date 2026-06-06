@@ -2,23 +2,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { BASE_URL } from '../config';
 
-export const uploadMedia = async (photoUri) => {
+export const uploadMedia = async (photoUri, mediaType = 'photo') => {
   try {
     if (!photoUri || photoUri === 'no_photo') return 'no_photo';
 
     const token = await AsyncStorage.getItem('token');
 
     const formData = new FormData();
+    const isVideo = mediaType === 'video' || photoUri.endsWith('.mp4') || photoUri.endsWith('.mov');
     
     if (Platform.OS === 'web') {
       const res = await fetch(photoUri);
       const blob = await res.blob();
-      formData.append('photo', blob, 'attendance_photo.jpg');
+      formData.append('photo', blob, isVideo ? 'attendance_video.mp4' : 'attendance_photo.jpg');
     } else {
       formData.append('photo', {
         uri: photoUri,
-        type: 'image/jpeg',
-        name: 'attendance_photo.jpg'
+        type: isVideo ? 'video/mp4' : 'image/jpeg',
+        name: isVideo ? 'attendance_video.mp4' : 'attendance_photo.jpg'
       });
     }
 

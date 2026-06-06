@@ -50,6 +50,7 @@ class Session(Base):
 	room_name = Column(String, default="Classroom")
 	wifi_ssid = Column(String)
 	is_active = Column(Boolean, default=True)
+	faculty_ip = Column(String, nullable=True)
 
 
 class AttendanceRecord(Base):
@@ -84,4 +85,46 @@ class DeviceBinding(Base):
 	student_id = Column(Integer, ForeignKey("users.id"), unique=True)
 	device_id = Column(String)
 	bound_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StudentReference(Base):
+	__tablename__ = "student_references"
+
+	id = Column(Integer, primary_key=True, index=True)
+	student_id = Column(Integer, ForeignKey("users.id"), unique=True)
+	wifi_ssid = Column(String, nullable=True)
+	wifi_bssid = Column(String, nullable=True)
+	latitude = Column(Float, nullable=True)
+	longitude = Column(Float, nullable=True)
+	geofence_radius = Column(Float, default=5000.0)
+	faculty_wifi_ssid = Column(String, nullable=True)
+	student_wifi_ssid = Column(String, nullable=True)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Alert(Base):
+	__tablename__ = "alerts"
+
+	id = Column(Integer, primary_key=True, index=True)
+	user_id = Column(Integer, ForeignKey("users.id"))
+	alert_type = Column(String)  # "low_attendance", "suspicious_attendance", "device_change"
+	message = Column(String)
+	is_read = Column(Boolean, default=False)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MediaRecord(Base):
+	__tablename__ = "media_records"
+
+	id = Column(Integer, primary_key=True, index=True)
+	student_id = Column(Integer, ForeignKey("users.id"))
+	filepath = Column(String)
+	media_url = Column(String, unique=True, index=True)
+	file_type = Column(String)  # "image" or "video"
+	file_size = Column(Integer)
+	hash_value = Column(String)  # phash for images, SHA-256 for videos
+	capture_time = Column(DateTime)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
  

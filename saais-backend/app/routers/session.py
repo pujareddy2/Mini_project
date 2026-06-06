@@ -2,7 +2,7 @@ import uuid
 import io
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,13 @@ import qrcode
 router = APIRouter(prefix="/session", tags=["session"])
 
 
+def get_client_ip(request: Request) -> str:
+	x_forwarded_for = request.headers.get("x-forwarded-for")
+	if x_forwarded_for:
+		return x_forwarded_for.split(",")[0].strip()
+	return request.client.host
+
+
 def _require_faculty(user: models.User):
 	if user.role != "faculty":
 		raise HTTPException(
@@ -27,6 +34,7 @@ def _require_faculty(user: models.User):
 @router.post("/start", response_model=schemas.SessionResponse)
 def start_session(
 	payload: schemas.SessionCreate,
+	request: Request,
 	db: Session = Depends(get_db),
 	current_user: models.User = Depends(get_current_user),
 ):
@@ -44,6 +52,7 @@ def start_session(
 		classroom_lon=payload.classroom_lon,
 		room_name=payload.room_name,
 		wifi_ssid=payload.wifi_ssid,
+		faculty_ip=get_client_ip(request),
 	)
 	db.add(session)
 	db.commit()
