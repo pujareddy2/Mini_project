@@ -1,7 +1,7 @@
 import math
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -10,6 +10,44 @@ from app.database import get_db
 
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
+
+
+def get_client_ip(request: Request) -> str:
+	x_forwarded_for = request.headers.get("x-forwarded-for")
+	if x_forwarded_for:
+		return x_forwarded_for.split(",")[0].strip()
+	return request.client.host
+
+
+def is_same_network(ip1: str, ip2: str) -> bool:
+	if ip1 == ip2:
+		return True
+	
+	# Check if both are private IPs (e.g. 192.168.x.x)
+	# If they are on the same local Wi-Fi network, their first 3 octets will match.
+	if ip1.startswith("192.168.") and ip2.startswith("192.168."):
+		parts1 = ip1.split(".")
+		parts2 = ip2.split(".")
+		if len(parts1) >= 3 and len(parts2) >= 3:
+			return parts1[:3] == parts2[:3]
+
+	if ip1.startswith("10.") and ip2.startswith("10."):
+		parts1 = ip1.split(".")
+		parts2 = ip2.split(".")
+		if len(parts1) >= 3 and len(parts2) >= 3:
+			return parts1[:3] == parts2[:3]
+
+	if ip1.startswith("172.") and ip2.startswith("172."):
+		parts1 = ip1.split(".")
+		parts2 = ip2.split(".")
+		if len(parts1) >= 2 and len(parts2) >= 2:
+			try:
+				if 16 <= int(parts1[1]) <= 31 and 16 <= int(parts2[1]) <= 31:
+					return parts1[:2] == parts2[:2]
+			except ValueError:
+				pass
+
+	return False
 
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -30,6 +68,7 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 @router.post("/submit", response_model=schemas.AttendanceResponse)
 def submit_attendance(
 	payload: schemas.AttendanceSubmit,
+	request: Request,
 	db: Session = Depends(get_db),
 	current_user: models.User = Depends(get_current_user),
 ):
@@ -63,6 +102,54 @@ def submit_attendance(
 			detail="Attendance already marked",
 		)
 
+	# 1. IP Matching Verification (Faculty vs Student IP, supporting proxies)
+	student_ip = get_client_ip(request)
+	if session.faculty_ip and not is_same_network(student_ip, session.faculty_ip):
+		# Mismatch! Immediately reject
+		status_value = "rejected"
+		message = f"Attendance rejected: IP address mismatch. Student IP ({student_ip}) does not match Faculty IP ({session.faculty_ip}). Please connect to the same Wi-Fi."
+		
+		record = models.AttendanceRecord(
+			student_id=current_user.id,
+			session_id=payload.session_id,
+			gps_lat=payload.gps_lat,
+			gps_lon=payload.gps_lon,
+			wifi_ssid=payload.wifi_ssid,
+			device_id=payload.device_id,
+			confidence_score=0.0,
+			status=status_value,
+			marked_at=datetime.utcnow() + timedelta(hours=5, minutes=30),
+		)
+		db.add(record)
+		db.commit()
+		db.refresh(record)
+
+		log = models.ValidationLog(
+			record_id=record.id,
+			reason="ip_mismatch",
+			risk_flag=True,
+			details=f"student_ip={student_ip}, faculty_ip={session.faculty_ip}"
+		)
+		db.add(log)
+		db.commit()
+
+		return {
+			"id": record.id,
+			"status": record.status,
+			"confidence_score": record.confidence_score,
+			"marked_at": record.marked_at,
+			"flags": {
+				"location": False,
+				"wifi": False,
+				"media": False,
+				"device": False
+			},
+			"attendanceId": f"ATT-{record.id}",
+			"message": message,
+			"distance": 0.0,
+			"room_name": session.room_name or "Classroom"
+		}
+
 	score = 0
 	qr_valid = False
 	gps_valid = False
@@ -70,54 +157,95 @@ def submit_attendance(
 	device_valid = False
 	media_valid = bool(payload.media_url) if hasattr(payload, 'media_url') else True
 
-	# QR validation - check if qr_token matches session token
+	# 1) QR Validation (25 pts)
 	if payload.qr_token and session.qr_token == payload.qr_token:
 		if not session.qr_expires_at or datetime.utcnow() <= session.qr_expires_at:
 			qr_valid = True
 			score += 25
 
-	# Session time window
-	if session.end_time and datetime.utcnow() <= session.end_time:
-		score += 0  # already validated above, just track window
+	# Check if StudentReference exists
+	reference = (
+		db.query(models.StudentReference)
+		.filter(models.StudentReference.student_id == current_user.id)
+		.first()
+	)
 
-	# GPS validation - 50m radius threshold
-	if payload.gps_lat == 0 and payload.gps_lon == 0:
-		gps_valid = True
-		score += 10
-		distance = 0.0
+	# 2) GPS Validation (20 pts)
+	distance = 0.0
+	if reference:
+		# Subsequent check: validate against registered reference location
+		if payload.gps_lat == 0 and payload.gps_lon == 0:
+			gps_valid = False
+		else:
+			distance = haversine(
+				payload.gps_lat,
+				payload.gps_lon,
+				reference.latitude,
+				reference.longitude,
+			)
+			if distance <= 5000.0:  # 5000 meters geofence
+				gps_valid = True
+				score += 20
 	else:
-		distance = haversine(
-			payload.gps_lat,
-			payload.gps_lon,
-			session.classroom_lat,
-			session.classroom_lon,
-		)
-		if distance <= 50:
-			gps_valid = True
+		# First check: validate against classroom location
+		if payload.gps_lat == 0 and payload.gps_lon == 0:
+			gps_valid = False
+		else:
+			distance = haversine(
+				payload.gps_lat,
+				payload.gps_lon,
+				session.classroom_lat,
+				session.classroom_lon,
+			)
+			if distance <= 5000.0:  # 5000 meters geofence
+				gps_valid = True
+				score += 20
+
+	# 3) WiFi Validation (20 pts)
+	if reference:
+		# Subsequent check: validate against reference WiFi
+		if not reference.wifi_ssid:
+			wifi_valid = True
+			score += 20
+		elif not payload.wifi_ssid or payload.wifi_ssid.lower() in ("unavailable", "unknown", ""):
+			wifi_valid = True
+			score += 20
+		else:
+			ssid_match = (payload.wifi_ssid.lower() == reference.wifi_ssid.lower())
+			bssid_match = False
+			if payload.bssid and reference.wifi_bssid:
+				bssid_match = (payload.bssid.lower() == reference.wifi_bssid.lower())
+			
+			if ssid_match or bssid_match:
+				wifi_valid = True
+				score += 20
+	else:
+		# First check: validate against session WiFi
+		if not session.wifi_ssid:
+			wifi_valid = True
+			score += 20
+		elif not payload.wifi_ssid or payload.wifi_ssid.lower() in ("unavailable", "unknown", ""):
+			wifi_valid = True
+			score += 20
+		elif session.wifi_ssid and payload.wifi_ssid.lower() == session.wifi_ssid.lower():
+			wifi_valid = True
+			score += 20
+		else:
+			wifi_valid = False
+
+	# 4) Media Validation (20 pts)
+	if not payload.media_url:
+		media_valid = True  # don't fail, but skip score
+	else:
+		media_rec = db.query(models.MediaRecord).filter(
+			models.MediaRecord.media_url == payload.media_url,
+			models.MediaRecord.student_id == current_user.id
+		).first()
+		if media_rec:
+			media_valid = True
 			score += 20
 
-	# WiFi validation
-	if not session.wifi_ssid:
-		# No WiFi required for this session
-		wifi_valid = True
-		score += 20
-	elif not payload.wifi_ssid or payload.wifi_ssid.lower() in ("unavailable", "unknown", ""):
-		# WiFi not available on this device (Android restriction), skip validation
-		wifi_valid = True
-		score += 20
-	elif session.wifi_ssid and payload.wifi_ssid.lower() == session.wifi_ssid.lower():
-		wifi_valid = True
-		score += 20
-	else:
-		wifi_valid = False
-
-	# Media validation
-	if not payload.media_url:
-		media_valid = True # don't fail, but skip score
-	elif media_valid:
-		score += 20
-
-	# Device validation
+	# 5) Device Validation (15 pts)
 	binding = (
 		db.query(models.DeviceBinding)
 		.filter(models.DeviceBinding.student_id == current_user.id)
@@ -127,6 +255,9 @@ def submit_attendance(
 		if binding.device_id == payload.device_id:
 			device_valid = True
 			score += 15
+		else:
+			# Strict lockout device verification mismatch
+			device_valid = False
 	else:
 		binding = models.DeviceBinding(
 			student_id=current_user.id,
@@ -136,16 +267,16 @@ def submit_attendance(
 		device_valid = True
 		score += 15
 
-	# Status thresholds - Strict Multi-Factor requirement
-	# To be 'valid', student must pass ALL primary checks (QR, GPS, WiFi, Media)
-	all_primary_passed = qr_valid and gps_valid and wifi_valid and media_valid
-	
-	if score >= 95 and all_primary_passed:
+	# Status thresholds (as per PDF requirements)
+	# 80-100: valid
+	# 60-79: suspicious
+	# Below 60: rejected
+	if score >= 80:
 		status_value = "valid"
-		message = "Attendance marked successfully (All factors verified)"
+		message = "Attendance marked successfully"
 	elif score >= 60:
 		status_value = "suspicious"
-		message = "Attendance flagged: One or more security factors (GPS/WiFi/Media) failed"
+		message = "Attendance flagged: One or more security factors failed"
 	else:
 		status_value = "rejected"
 		message = "Attendance rejected: Multiple validation failures"
@@ -168,8 +299,81 @@ def submit_attendance(
 	if faculty and current_user not in faculty.faculty_of:
 		faculty.faculty_of.append(current_user)
 
+	# 7) Locked-in Parameters Creation (On first successful attendance)
+	if not reference and status_value == "valid":
+		new_reference = models.StudentReference(
+			student_id=current_user.id,
+			wifi_ssid=payload.wifi_ssid,
+			wifi_bssid=payload.bssid,
+			latitude=payload.gps_lat,
+			longitude=payload.gps_lon,
+			geofence_radius=5000.0,
+			faculty_wifi_ssid=session.wifi_ssid,
+			student_wifi_ssid=payload.wifi_ssid
+		)
+		db.add(new_reference)
+
 	db.commit()
 	db.refresh(record)
+
+	# --- Automatic Alerts Generation (Module 5) ---
+	from app.services.alert_service import create_alert
+
+	# Alert 1: Student Alert: Attendance Below 75%
+	all_records = (
+		db.query(models.AttendanceRecord)
+		.filter(models.AttendanceRecord.student_id == current_user.id)
+		.all()
+	)
+	total_count = len(all_records)
+	present_count = len([r for r in all_records if r.status == "valid"])
+	percentage = (present_count / total_count) * 100 if total_count > 0 else 0
+	if percentage < 75.0:
+		create_alert(
+			db,
+			current_user.id,
+			"low_attendance",
+			f"Your attendance has dropped below 75%. Current attendance: {round(percentage, 1)}%"
+		)
+
+	# Alert 2: Faculty Alert: Suspicious Attendance Detected
+	if status_value in ("suspicious", "rejected"):
+		create_alert(
+			db,
+			session.faculty_id,
+			"suspicious_attendance",
+			f"Suspicious attendance detected from student {current_user.name} in session {payload.session_id}"
+		)
+
+	# Alert 3: Admin/Faculty Alert: Multiple Device Changes
+	if not device_valid:
+		create_alert(
+			db,
+			session.faculty_id,
+			"device_change",
+			f"Multiple device changes detected for student {current_user.name}. Possible phone sharing."
+		)
+
+	# Alert 4: Faculty Alert: Risk Score Increased (Confidence Score Drop)
+	prev_records = (
+		db.query(models.AttendanceRecord)
+		.filter(
+			models.AttendanceRecord.student_id == current_user.id,
+			models.AttendanceRecord.id != record.id
+		)
+		.order_by(models.AttendanceRecord.marked_at.desc())
+		.limit(3)
+		.all()
+	)
+	if prev_records:
+		avg_prev_score = sum(r.confidence_score for r in prev_records) / len(prev_records)
+		if avg_prev_score - score >= 25.0:
+			create_alert(
+				db,
+				session.faculty_id,
+				"risk_score_increase",
+				f"Student {current_user.name}'s risk score has increased"
+			)
 
 	failed_checks = []
 	if not qr_valid: failed_checks.append("qr")

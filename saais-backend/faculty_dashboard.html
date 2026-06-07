@@ -4,35 +4,610 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SAAIS Faculty Dashboard</title>
+<!-- Load Chart.js from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Arial,sans-serif;background:#f0f4f8;color:#1a202c}
-.hidden{display:none}
+.hidden{display:none !important}
 .container{max-width:800px;margin:0 auto;padding:20px}
 h1{color:#2b6cb0;text-align:center;margin-bottom:30px}
 h2{color:#2d3748;margin-bottom:15px}
 .card{background:white;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 input{width:100%;padding:10px 14px;margin-bottom:12px;border:1px solid #cbd5e0;border-radius:8px;font-size:14px}
 button{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer;margin-bottom:10px}
-.btn-primary{background:#2b6cb0;color:white}
-.btn-danger{background:#e53e3e;color:white}
-.btn-secondary{background:#718096;color:white}
-.error{color:#e53e3e;font-size:13px;margin-top:8px;text-align:center}
+.btn-primary{background:#4f8ef7;color:white}
+.btn-danger{background:#e74c3c;color:white}
+.btn-secondary{background:#f0f0f0;color:#333}
+.error{color:#e74c3c;font-size:13px;margin-top:8px;text-align:center}
 .qr-wrap{text-align:center;padding:20px}
-.qr-wrap img{width:300px;height:300px;border:4px solid #2b6cb0;border-radius:12px}
+.qr-wrap img{width:300px;height:300px;border:4px solid #4f8ef7;border-radius:12px}
 .qr-token{font-size:11px;color:#718096;margin-top:8px;word-break:break-all;padding:0 10px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 .stat{background:#ebf8ff;border-radius:8px;padding:16px;text-align:center}
 .stat.warn{background:#fffaf0}
 .stat.bad{background:#fff5f5}
-.num{font-size:36px;font-weight:bold;color:#2b6cb0}
+.num{font-size:36px;font-weight:bold;color:#4f8ef7}
 .stat.warn .num{color:#dd6b20}
-.stat.bad .num{color:#e53e3e}
+.stat.bad .num{color:#e74c3c}
 .lbl{font-size:12px;color:#718096;margin-top:4px}
-.sus-item{background:#fff5f5;border-left:3px solid #e53e3e;padding:10px;margin-bottom:8px;border-radius:4px;font-size:13px}
+.sus-item{background:#fff5f5;border-left:3px solid #e74c3c;padding:10px;margin-bottom:8px;border-radius:4px;font-size:13px}
 .info{background:#ebf8ff;border-radius:8px;padding:12px;margin-bottom:15px;font-size:14px}
 .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .sm-btn{background:#718096;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;width:auto}
+
+/* Sidebar Layout Styling */
+.dashboard-wrapper {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 260px;
+  background: #1a1f36;
+  color: white;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  justify-content: space-between;
+}
+.sidebar-header h2 {
+  color: #4f8ef7;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.sidebar-header p {
+  color: #718096;
+  font-size: 0.85rem;
+}
+.nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 40px;
+  flex: 1;
+}
+.nav-item {
+  color: #a0aec0;
+  text-decoration: none;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+.nav-item:hover, .nav-item.active {
+  color: white;
+  background: #2d3748;
+}
+.nav-item.active {
+  background: #4f8ef7;
+}
+.nav-badge {
+  background: #e74c3c;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.sidebar-footer {
+  margin-top: auto;
+}
+.btn-logout {
+  width: 100%;
+  padding: 10px;
+  background: #2d3748;
+  color: #a0aec0;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-logout:hover {
+  color: white;
+  background: #e74c3c;
+}
+.main-content {
+  flex: 1;
+  margin-left: 260px;
+  background: #f0f4f8;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.topbar-nav {
+  background: white;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.topbar-nav h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a202c;
+}
+.content-scroll {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.dashboard-section {
+  scroll-margin-top: 80px;
+}
+
+/* Card Styling override for consistency */
+.card {
+  background: white !important;
+  border-radius: 12px !important;
+  padding: 24px !important;
+  margin-bottom: 0 !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Section specific layouts */
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #edf2f7;
+  padding-bottom: 12px;
+}
+.section-header-row h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1a202c;
+  margin: 0;
+}
+
+/* Alerts Feed Styling */
+.badge-count {
+  background: #e74c3c;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+.alert-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: opacity 0.3s ease;
+}
+.alert-card.faded {
+  opacity: 0.5;
+}
+.alert-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.alert-type-badge {
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+.alert-time {
+  color: #a0aec0;
+  font-size: 0.75rem;
+}
+.alert-msg {
+  font-size: 0.9rem;
+  color: #2d3748;
+}
+.animated-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* History table colors and actions */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+th, td {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 0.9rem;
+}
+th {
+  background: #f7fafc;
+  font-weight: 600;
+  color: #4a5568;
+  border-bottom: 2px solid #edf2f7;
+  cursor: pointer;
+  user-select: none;
+}
+td {
+  border-bottom: 1px solid #edf2f7;
+  color: #2d3748;
+}
+tr:hover {
+  background: #f8f9ff;
+}
+.pct-good {
+  background-color: #d4edda !important;
+  color: #155724 !important;
+  font-weight: bold;
+  text-align: center;
+}
+.pct-bad {
+  background-color: #f8d7da !important;
+  color: #721c24 !important;
+  font-weight: bold;
+  text-align: center;
+}
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #edf2f7;
+}
+
+/* Students Cards Grid */
+.flex-column-mobile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.filters-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#studentSearch {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  width: 200px;
+  margin: 0;
+}
+.filter-buttons {
+  display: flex;
+  gap: 4px;
+}
+.filter-buttons .sm-btn {
+  background: #e2e8f0;
+  color: #4a5568;
+}
+.filter-buttons .sm-btn.active-filter {
+  background: #4f8ef7;
+  color: white;
+}
+.students-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+.student-card {
+  background: white;
+  border-radius: 10px;
+  padding: 16px;
+  position: relative;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.student-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.student-card-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 1.2rem;
+}
+.student-card h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #1a202c;
+  padding-right: 24px;
+}
+.course-name {
+  color: #718096;
+  font-size: 0.8rem;
+  margin-bottom: 12px;
+}
+.attendance-count {
+  font-size: 0.85rem;
+  color: #4a5568;
+  margin-bottom: 12px;
+}
+.progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.progress-bar-container {
+  flex: 1;
+  height: 8px;
+  background: #edf2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+.progress-pct {
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+/* Charts styling */
+.charts-row {
+  display: flex;
+  gap: 20px;
+  margin-top: 16px;
+}
+.chart-card {
+  flex: 1;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  height: 300px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+}
+
+/* Modal Styling */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-card {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 900px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+.modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #edf2f7;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: bold;
+  color: #1a202c;
+  margin: 0;
+}
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: #a0aec0;
+}
+.close-btn:hover {
+  color: #e74c3c;
+}
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #edf2f7;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: #f7fafc;
+}
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  display: inline-block;
+}
+.badge-valid { background: #d4edda; color: #155724; }
+.badge-suspicious { background: #fffbeb; color: #dd6b20; }
+.badge-rejected { background: #fff5f5; color: #e53e3e; }
+.badge-absent { background: #edf2f7; color: #718096; }
+
+.audit-detail-row td {
+  background: #f8fafc;
+  padding: 0 !important;
+}
+.audit-details-content {
+  padding: 16px;
+  border-left: 4px solid #4f8ef7;
+  font-size: 0.85rem;
+  color: #4a5568;
+}
+.audit-details-content p {
+  margin-bottom: 6px;
+}
+
+/* Error/Empty states */
+.error-banner {
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  color: #c53030;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  width: 100%;
+}
+.btn-retry {
+  background: #c53030;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.8rem;
+  margin-top: 10px;
+}
+.empty-state {
+  color: #718096;
+  text-align: center;
+  font-style: italic;
+  padding: 20px 0;
+  font-size: 0.9rem;
+  width: 100%;
+}
+.mobile-logout {
+  display: none;
+}
+
+/* Print reports only */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  #loginPage, #dashPage, .sidebar, .main-content, .dashboard-section, .card, .topbar-nav, #auditModal {
+    display: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  #historySection {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+  }
+  #historySection * {
+    display: none !important;
+  }
+  #historySection h2, #historySection #historyContainer, #historySection table, #historyTable * {
+    display: revert !important;
+  }
+  #historyTable {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  #historyTable th, #historyTable td {
+    border: 1px solid #ddd !important;
+    padding: 8px !important;
+  }
+}
+
+/* Responsive queries */
+@media (max-width: 768px) {
+  .dashboard-wrapper {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    position: relative;
+    height: auto;
+    padding: 16px;
+  }
+  .nav-links {
+    margin-top: 16px;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .nav-item {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .sidebar-footer {
+    display: none;
+  }
+  .main-content {
+    margin-left: 0;
+  }
+  .topbar-nav {
+    display: none;
+  }
+  .content-scroll {
+    padding: 16px;
+  }
+  .students-grid {
+    grid-template-columns: 1fr;
+  }
+  .charts-row {
+    flex-direction: column;
+  }
+  .chart-card {
+    height: 250px;
+  }
+  .flex-column-mobile {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .filters-row {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #studentSearch {
+    width: 100%;
+  }
+  .filter-buttons {
+    width: 100%;
+  }
+  .filter-buttons .sm-btn {
+    flex: 1;
+  }
+  .mobile-logout {
+    display: block;
+  }
+}
 </style>
 </head>
 <body>
@@ -48,51 +623,227 @@ button{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;font
 </div>
 </div>
 
-<div id="dashPage" class="container hidden">
-<div class="topbar">
-<h1 style="margin:0">SAAIS Faculty</h1>
-<button class="sm-btn" onclick="logout()">Logout</button>
+<div id="dashPage" class="dashboard-wrapper hidden">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>SAAIS</h2>
+      <p>Faculty Portal</p>
+    </div>
+    <nav class="nav-links">
+      <a href="#activeSession" class="nav-item active" onclick="scrollToSection('activeSession', event)">🏠 Dashboard Overview</a>
+      <a href="#alertsSection" class="nav-item" onclick="scrollToSection('alertsSection', event)">🔔 Alerts <span id="alertBadge" class="nav-badge hidden">0</span></a>
+      <a href="#historySection" class="nav-item" onclick="scrollToSection('historySection', event)">📋 Session History</a>
+      <a href="#studentsSection" class="nav-item" onclick="scrollToSection('studentsSection', event)">🎓 Students</a>
+      <a href="#analyticsSection" class="nav-item" onclick="scrollToSection('analyticsSection', event)">📊 Analytics</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="topbar-nav">
+      <h2 id="topbarTitle">Dashboard Overview</h2>
+      <button class="sm-btn mobile-logout" onclick="logout()">Logout</button>
+    </div>
+    <div class="content-scroll">
+      
+      <!-- Section 0: Active Session -->
+      <section id="activeSession" class="dashboard-section">
+        <div id="formCard" class="card">
+          <h2>Start Attendance Session</h2>
+          <input type="text" id="subject" placeholder="Subject Name" value="Test Subject">
+          <input type="datetime-local" id="endTime">
+          <input type="number" id="lat" placeholder="Latitude" value="17.385" step="0.0001">
+          <input type="number" id="lon" placeholder="Longitude" value="78.4867" step="0.0001">
+          <input type="text" id="wifi" placeholder="WiFi SSID" value="D-Link DIR-615 3">
+          <button class="btn-primary" onclick="startSession()">Start Session & Generate QR</button>
+          <p id="sessionError" class="error"></p>
+        </div>
+
+        <div id="sessionCard" class="card hidden">
+          <h2>Active Session</h2>
+          <div id="sessionInfo" class="info"></div>
+          <div class="qr-wrap">
+            <img id="qrImg" src="" alt="QR Code">
+            <p class="qr-token" id="qrToken"></p>
+          </div>
+          <h2>Live Attendance</h2>
+          <div class="stats">
+            <div class="stat"><div class="num" id="presentCount">0</div><div class="lbl">Present</div></div>
+            <div class="stat warn"><div class="num" id="suspiciousCount">0</div><div class="lbl">Suspicious</div></div>
+            <div class="stat bad"><div class="num" id="rejectedCount">0</div><div class="lbl">Rejected</div></div>
+          </div>
+          <div id="susList"></div>
+          <button class="btn-danger" onclick="endSession()">End Session</button>
+        </div>
+      </section>
+
+      <!-- Section 1: Alerts (Feature 1) -->
+      <section id="alertsSection" class="dashboard-section card">
+        <div class="section-header-row">
+          <h2>🔔 Smart Alerts <span id="alertsBadge" class="badge-count hidden">0</span></h2>
+          <button id="markAllReadBtn" class="sm-btn btn-secondary" onclick="markAllAlertsReadClick()">Mark All as Read</button>
+        </div>
+        <div id="alertsContainer">
+          <!-- Cards populated here -->
+        </div>
+      </section>
+
+      <!-- Section 2: Session History (Feature 2) -->
+      <section id="historySection" class="dashboard-section card">
+        <div class="section-header-row">
+          <h2>📋 Session History</h2>
+          <button class="sm-btn btn-primary" onclick="printHistoryTable()">Print Report</button>
+        </div>
+        <div id="historyContainer">
+          <div class="table-responsive">
+            <table id="historyTable">
+              <thead>
+                <tr>
+                  <th onclick="sortHistory('subject')">Subject ↕</th>
+                  <th onclick="sortHistory('date')">Date ↕</th>
+                  <th>Time</th>
+                  <th>Total</th>
+                  <th>Attended</th>
+                  <th>Suspicious</th>
+                  <th>Rejected</th>
+                  <th onclick="sortHistory('attendance_percentage')">Attendance % ↕</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <!-- Rows populated here -->
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination-controls" id="historyPagination">
+            <!-- Pagination buttons -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Students Overview (Feature 3) -->
+      <section id="studentsSection" class="dashboard-section card">
+        <div class="section-header-row flex-column-mobile">
+          <h2>🎓 Student Attendance Overview</h2>
+          <div class="filters-row">
+            <input type="text" id="studentSearch" placeholder="Search student name..." oninput="filterStudentCards()">
+            <div class="filter-buttons">
+              <button id="filter-all" class="sm-btn active-filter" onclick="setStudentFilter('all')">All</button>
+              <button id="filter-below" class="sm-btn" onclick="setStudentFilter('below')">Below 75%</button>
+              <button id="filter-above" class="sm-btn" onclick="setStudentFilter('above')">Above 75%</button>
+            </div>
+          </div>
+        </div>
+        <div id="studentsContainer">
+          <div id="studentsGrid" class="students-grid">
+            <!-- Responsive student cards -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Charts (Feature 4) -->
+      <section id="analyticsSection" class="dashboard-section card">
+        <h2>📊 Analytics</h2>
+        <div id="analyticsContainer" class="charts-row">
+          <div class="chart-card">
+            <canvas id="chartA"></canvas>
+          </div>
+          <div class="chart-card">
+            <canvas id="chartB"></canvas>
+          </div>
+        </div>
+      </section>
+      
+    </div>
+  </main>
 </div>
 
-<div id="formCard" class="card">
-<h2>Start Attendance Session</h2>
-<input type="text" id="subject" placeholder="Subject Name" value="Test Subject">
-<input type="datetime-local" id="endTime">
-<input type="number" id="lat" placeholder="Latitude" value="17.385" step="0.0001">
-<input type="number" id="lon" placeholder="Longitude" value="78.4867" step="0.0001">
-<input type="text" id="wifi" placeholder="WiFi SSID" value="D-Link DIR-615 3">
-<button class="btn-primary" onclick="startSession()">Start Session & Generate QR</button>
-<p id="sessionError" class="error"></p>
-</div>
-
-<div id="sessionCard" class="card hidden">
-<h2>Active Session</h2>
-<div id="sessionInfo" class="info"></div>
-<div class="qr-wrap">
-<img id="qrImg" src="" alt="QR Code">
-<p class="qr-token" id="qrToken"></p>
-</div>
-<h2>Live Attendance</h2>
-<div class="stats">
-<div class="stat"><div class="num" id="presentCount">0</div><div class="lbl">Present</div></div>
-<div class="stat warn"><div class="num" id="suspiciousCount">0</div><div class="lbl">Suspicious</div></div>
-<div class="stat bad"><div class="num" id="rejectedCount">0</div><div class="lbl">Rejected</div></div>
-</div>
-<div id="susList"></div>
-<button class="btn-danger" onclick="endSession()">End Session</button>
-</div>
+<!-- Section 5: Audit Log Modal (Feature 5) -->
+<div id="auditModal" class="modal-overlay hidden" onclick="closeAuditModalOutside(event)">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="auditHeaderTitle">🔍 Audit Log</h3>
+      <button class="close-btn" onclick="closeAuditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="auditLoading" class="spinner-wrap">
+        <div class="spinner"></div>
+        <p>Loading audit logs...</p>
+      </div>
+      <div id="auditContent" class="hidden">
+        <div class="table-responsive">
+          <table id="auditTable">
+            <thead>
+              <tr>
+                <th>Student Name</th>
+                <th>Status</th>
+                <th>Score</th>
+                <th>QR</th>
+                <th>GPS</th>
+                <th>WiFi</th>
+                <th>Device</th>
+                <th>Media</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="auditTableBody">
+              <!-- Audit rows populated here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="exportAuditCSV()">Export Audit CSV</button>
+      <button class="btn-secondary" onclick="closeAuditModal()">Close</button>
+    </div>
+  </div>
 </div>
 
 <script>
-const BASE = 'http://192.168.0.106:8080';
+const BASE = window.location.origin.includes('localhost') || window.location.origin.includes('192.168.') || window.location.origin.includes('127.0.0.1')
+  ? window.location.origin
+  : 'http://localhost:8000';
 let token = localStorage.getItem('faculty_token');
 let currentSessionId = null;
 let refreshTimer = null;
+
+// New States
+let allFacultySessions = [];
+let endedSessions = [];
+let allStudentDetails = [];
+let currentStudentFilter = 'all';
+let currentAuditSession = null;
+let currentAuditRecords = [];
+let historyCurrentPage = 1;
+const PAGE_SIZE = 8;
+let historySortColumn = 'date';
+let historySortOrder = 'desc';
+let alertsTimer = null;
+let currentUnreadAlertIds = [];
+
+// Chart.js references
+let chartA = null;
+let chartB = null;
 
 window.onload = function() {
   const d = new Date();
   d.setHours(d.getHours() + 2);
   document.getElementById('endTime').value = d.toISOString().slice(0,16);
+  
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(position) {
+      document.getElementById('lat').value = position.coords.latitude.toFixed(6);
+      document.getElementById('lon').value = position.coords.longitude.toFixed(6);
+    }, function(err) {
+      console.log("Geolocation error:", err);
+    });
+  }
+
   if(token) showDash();
 };
 
@@ -109,6 +860,8 @@ async function login() {
     if(!r.ok) throw new Error(d.detail || 'Login failed');
     token = d.token;
     localStorage.setItem('faculty_token', token);
+    localStorage.setItem('token', token);
+    localStorage.setItem('faculty_id', d.student_id);
     showDash();
   } catch(e) {
     document.getElementById('loginError').textContent = e.message;
@@ -118,12 +871,26 @@ async function login() {
 function showDash() {
   document.getElementById('loginPage').classList.add('hidden');
   document.getElementById('dashPage').classList.remove('hidden');
+  
+  // Set up Nav IntersectionObserver
+  setupNavObserver();
+  
+  // Initial loading of new features
+  loadAlerts();
+  loadSessionHistoryAndAnalytics();
+  
+  // Start 30s alerts poll
+  if (alertsTimer) clearInterval(alertsTimer);
+  alertsTimer = setInterval(loadAlerts, 30000);
 }
 
 function logout() {
   localStorage.removeItem('faculty_token');
+  localStorage.removeItem('token');
+  localStorage.removeItem('faculty_id');
   token = null;
   if(refreshTimer) clearInterval(refreshTimer);
+  if(alertsTimer) clearInterval(alertsTimer);
   document.getElementById('dashPage').classList.add('hidden');
   document.getElementById('loginPage').classList.remove('hidden');
 }
@@ -213,7 +980,905 @@ async function endSession() {
     document.getElementById('sessionCard').classList.add('hidden');
     document.getElementById('formCard').classList.remove('hidden');
     document.getElementById('sessionError').textContent = '';
+    
+    // Reload dashboard history and overview
+    loadSessionHistoryAndAnalytics();
   } catch(e) { alert('Error ending session: '+e.message); }
+}
+
+// -------------------------------------------------------------
+// HELPER UTILITIES
+// -------------------------------------------------------------
+function formatDateTime(isoString) {
+  if (!isoString) return 'N/A';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return isoString;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${day} ${month} ${year}, ${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+}
+
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parseInt(parts[2], 10)} ${months[parseInt(parts[1], 10) - 1]}`;
+    }
+    return dateStr;
+  }
+  return `${date.getDate()} ${months[date.getMonth()]}`;
+}
+
+function formatSeconds(sec) {
+  if (sec === undefined || sec === null) return 'N/A';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${sec} seconds (${m} min ${s} sec)`;
+}
+
+function downloadCSV(filename, headers, rows) {
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(val => {
+      if (val === null || val === undefined) return '';
+      const stringVal = String(val).replace(/"/g, '""');
+      return stringVal.includes(',') || stringVal.includes('\n') || stringVal.includes('"') ? `"${stringVal}"` : stringVal;
+    }).join(','))
+  ].join('\n');
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// -------------------------------------------------------------
+// SECTION ERROR & EMPTY HANDLERS
+// -------------------------------------------------------------
+function showSectionError(section, errorMsg) {
+  const container = document.getElementById(`${section}Container`);
+  if (!container) return;
+  container.innerHTML = `
+    <div class="error-banner">
+      <p>Failed to load data. Please try again. (${errorMsg})</p>
+      <button class="btn-retry" onclick="retrySection('${section}')">Retry</button>
+    </div>
+  `;
+}
+
+function showSectionEmpty(section, message) {
+  const container = document.getElementById(`${section}Container`);
+  if (!container) return;
+  container.innerHTML = `<p class="empty-state">${message}</p>`;
+}
+
+function retrySection(section) {
+  if (section === 'alerts') {
+    loadAlerts();
+  } else {
+    loadSessionHistoryAndAnalytics();
+  }
+}
+
+// -------------------------------------------------------------
+// FEATURE 1 — SMART ALERTS FEED
+// -------------------------------------------------------------
+async function loadAlerts() {
+  const facultyId = localStorage.getItem("faculty_id");
+  if (!facultyId) {
+    showSectionError('alerts', 'Faculty ID missing. Login again.');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${BASE}/alerts/faculty/${facultyId}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    
+    if (res.status === 401) {
+      logout();
+      return;
+    }
+    
+    if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+    const data = await res.json();
+    
+    // Sort: most recent first
+    data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    const unreadAlerts = data.filter(a => !a.read);
+    currentUnreadAlertIds = unreadAlerts.map(a => a.id);
+    
+    const badge = document.getElementById('alertsBadge');
+    const navBadge = document.getElementById('alertBadge');
+    
+    if (currentUnreadAlertIds.length > 0) {
+      badge.textContent = currentUnreadAlertIds.length;
+      badge.classList.remove('hidden');
+      navBadge.textContent = currentUnreadAlertIds.length;
+      navBadge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+      navBadge.classList.add('hidden');
+    }
+    
+    const container = document.getElementById('alertsContainer');
+    if (data.length === 0) {
+      container.innerHTML = '<p class="empty-state">No alerts at this time.</p>';
+      return;
+    }
+    
+    container.innerHTML = data.map(alert => {
+      let typeLabel = "Security Alert";
+      let typeIcon = "🔔";
+      let severity = "low";
+      let studentName = alert.student_name || "";
+
+      const rawType = (alert.type || "").toLowerCase();
+      const rawTitle = (alert.title || "").toLowerCase();
+      const rawMsg = (alert.message || "");
+
+      if (rawType === "device_change" || rawTitle.includes("device change")) {
+        typeLabel = "Device Change";
+        typeIcon = "📱";
+        severity = "high";
+      } else if (rawType === "low_attendance" || rawTitle.includes("low attendance")) {
+        typeLabel = "Low Attendance";
+        typeIcon = "📉";
+        severity = "medium";
+      } else if (rawType === "suspicious" || rawType === "suspicious_attendance" || rawTitle.includes("suspicious")) {
+        typeLabel = "Suspicious Activity";
+        typeIcon = "⚠️";
+        severity = "high";
+      } else if (rawType === "risk_score_drop" || rawType === "risk_score_increase" || rawTitle.includes("risk")) {
+        typeLabel = "Risk Score Drop";
+        typeIcon = "📊";
+        severity = "medium";
+      }
+
+      if (alert.severity) {
+        severity = alert.severity.toLowerCase();
+      }
+
+      if (!studentName) {
+        const match = rawMsg.match(/student\s+([^.]+)/i);
+        studentName = (match && match[1]) ? match[1].trim() : "Student";
+      }
+      
+      let borderCol = '#f1c40f'; // low / yellow
+      if (severity === 'high') borderCol = '#e74c3c'; // red
+      else if (severity === 'medium') borderCol = '#e67e22'; // orange
+      
+      const isRead = alert.read;
+      const readClass = isRead ? 'faded' : '';
+      
+      return `
+        <div class="alert-card ${readClass} animated-fade-in" style="border-left: 5px solid ${borderCol};">
+          <div class="alert-card-header">
+            <span class="alert-type-badge">${typeIcon} ${typeLabel}</span>
+            <span class="alert-time">${formatDateTime(alert.timestamp)}</span>
+          </div>
+          <p class="alert-msg"><b>${studentName}</b>: ${alert.message}</p>
+        </div>
+      `;
+    }).join('');
+    
+  } catch (e) {
+    console.error("Alert loading failed:", e);
+    showSectionError('alerts', e.message);
+  }
+}
+
+async function markAllAlertsRead(alertIds) {
+  for (const id of alertIds) {
+    try {
+      await fetch(`${BASE}/alerts/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ id: id })
+      });
+    } catch (e) {
+      console.error("Failed to mark alert read:", id, e);
+    }
+  }
+}
+
+async function markAllAlertsReadClick() {
+  if (currentUnreadAlertIds.length === 0) return;
+  
+  const cards = document.querySelectorAll('.alert-card');
+  cards.forEach(c => c.classList.add('faded'));
+  
+  document.getElementById('alertsBadge').classList.add('hidden');
+  document.getElementById('alertBadge').classList.add('hidden');
+  
+  await markAllAlertsRead(currentUnreadAlertIds);
+  currentUnreadAlertIds = [];
+}
+
+// -------------------------------------------------------------
+// LOAD ALL DATA FLOW
+// -------------------------------------------------------------
+async function loadSessionHistoryAndAnalytics() {
+  const facultyId = localStorage.getItem("faculty_id");
+  if (!facultyId) return;
+  
+  try {
+    const res = await fetch(`${BASE}/dashboard/faculty/${facultyId}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    
+    if (res.status === 401) {
+      logout();
+      return;
+    }
+    
+    if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+    const data = await res.json();
+    
+    if (!data || data.length === 0) {
+      showSectionEmpty('history', 'No completed sessions yet.');
+      showSectionEmpty('students', 'No students to display.');
+      showSectionEmpty('analytics', 'No chart data available.');
+      return;
+    }
+    
+    allFacultySessions = data.map(s => {
+      const isEnded = s.status === 'ended' || s.is_active === false;
+      const total = s.total_students !== undefined ? s.total_students : (s.total || 0);
+      const attended = s.attended !== undefined ? s.attended : (s.present || 0);
+      const suspicious = s.suspicious || 0;
+      const rejected = s.rejected || 0;
+      
+      let date = s.date;
+      let startTimeStr = s.start_time;
+      let endTimeStr = s.end_time;
+      
+      if (s.start_time && s.start_time.includes('T')) {
+        const parts = s.start_time.split('T');
+        date = parts[0];
+        startTimeStr = parts[1].slice(0, 5);
+      }
+      if (s.end_time && s.end_time.includes('T')) {
+        endTimeStr = s.end_time.split('T')[1].slice(0, 5);
+      }
+      
+      return {
+        session_id: s.session_id,
+        subject: s.subject,
+        date: date || 'N/A',
+        start_time: startTimeStr || 'N/A',
+        end_time: endTimeStr || 'N/A',
+        status: isEnded ? 'ended' : 'active',
+        total_students: total,
+        attended: attended,
+        suspicious: suspicious,
+        rejected: rejected,
+        attendance_percentage: total > 0 ? ((attended / total) * 100) : 0
+      };
+    });
+    
+    endedSessions = allFacultySessions.filter(s => s.status === 'ended');
+    
+    if (endedSessions.length === 0) {
+      showSectionEmpty('history', 'No completed sessions yet.');
+      showSectionEmpty('students', 'No students to display.');
+      showSectionEmpty('analytics', 'No chart data available.');
+      return;
+    }
+    
+    // Feature 2 Table
+    renderHistoryTable();
+    
+    // Feature 4 Charts
+    renderCharts(endedSessions);
+    
+    // Feature 3 Student Cards
+    await loadStudentOverview(endedSessions);
+    
+  } catch (e) {
+    console.error("Session fetch failed:", e);
+    showSectionError('history', e.message);
+    showSectionError('students', e.message);
+    showSectionError('analytics', e.message);
+  }
+}
+
+// -------------------------------------------------------------
+// FEATURE 2 — SESSION HISTORY
+// -------------------------------------------------------------
+function sortHistory(col) {
+  if (historySortColumn === col) {
+    historySortOrder = historySortOrder === 'asc' ? 'desc' : 'asc';
+  } else {
+    historySortColumn = col;
+    historySortOrder = 'desc';
+  }
+  renderHistoryTable();
+}
+
+function getSortedHistory() {
+  return [...endedSessions].sort((a, b) => {
+    let valA = a[historySortColumn];
+    let valB = b[historySortColumn];
+    
+    if (historySortColumn === 'attendance_percentage') {
+      valA = a.attendance_percentage;
+      valB = b.attendance_percentage;
+    }
+    
+    if (valA < valB) return historySortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return historySortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function renderHistoryTable() {
+  const sorted = getSortedHistory();
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  
+  if (historyCurrentPage > totalPages) historyCurrentPage = totalPages;
+  if (historyCurrentPage < 1) historyCurrentPage = 1;
+  
+  const pageData = sorted.slice((historyCurrentPage - 1) * PAGE_SIZE, historyCurrentPage * PAGE_SIZE);
+  
+  const tbody = document.getElementById('historyTableBody');
+  tbody.innerHTML = pageData.map(s => {
+    const pctClass = s.attendance_percentage >= 75 ? 'pct-good' : 'pct-bad';
+    return `
+      <tr>
+        <td><b>${s.subject}</b></td>
+        <td>${s.date}</td>
+        <td>${s.start_time} - ${s.end_time}</td>
+        <td>${s.total_students}</td>
+        <td>${s.attended}</td>
+        <td>${s.suspicious}</td>
+        <td>${s.rejected}</td>
+        <td class="${pctClass}">${s.attendance_percentage.toFixed(1)}%</td>
+        <td>
+          <div class="table-actions">
+            <button class="sm-btn btn-primary" onclick="openAuditModal(${s.session_id}, '${s.subject}', '${s.date}')">View Audit</button>
+            <button class="sm-btn btn-secondary" onclick="exportSessionCSV(${s.session_id}, '${s.subject}')">Export CSV</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  
+  const pag = document.getElementById('historyPagination');
+  if (totalPages > 1) {
+    pag.innerHTML = `
+      <button class="sm-btn btn-secondary" ${historyCurrentPage === 1 ? 'disabled' : ''} onclick="changeHistoryPage(-1)">Prev</button>
+      <span>Page ${historyCurrentPage} of ${totalPages}</span>
+      <button class="sm-btn btn-secondary" ${historyCurrentPage === totalPages ? 'disabled' : ''} onclick="changeHistoryPage(1)">Next</button>
+    `;
+    pag.classList.remove('hidden');
+  } else {
+    pag.innerHTML = '';
+    pag.classList.add('hidden');
+  }
+}
+
+function changeHistoryPage(dir) {
+  historyCurrentPage += dir;
+  renderHistoryTable();
+}
+
+async function exportSessionCSV(sessionId, subject) {
+  try {
+    const r = await fetch(`${BASE}/analytics/session/${sessionId}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) throw new Error("Analytics call failed");
+    const data = await r.json();
+    let rawList = Array.isArray(data) ? data : (data.students || []);
+    
+    const headers = ["Student Name", "Status", "Confidence Score", "QR", "GPS", "WiFi", "Device", "Media", "Scan Time", "Suspicious Reason"];
+    const rows = rawList.map(r => {
+      const studentName = r.student_name || ("Student " + r.student_id);
+      const status = r.status || "absent";
+      const score = r.confidence_score !== undefined ? r.confidence_score : (r.confidence || 0);
+      const qr = r.qr_valid !== undefined ? (r.qr_valid ? "Valid" : "Invalid") : (score >= 25 ? "Valid" : "Invalid");
+      const gps = r.gps_valid !== undefined ? (r.gps_valid ? "Valid" : "Invalid") : (score >= 45 || status === 'valid' ? "Valid" : "Invalid");
+      const wifi = r.wifi_valid !== undefined ? (r.wifi_valid ? "Valid" : "Invalid") : (score >= 65 || status === 'valid' ? "Valid" : "Invalid");
+      const device = r.device_valid !== undefined ? (r.device_valid ? "Valid" : "Invalid") : (score >= 80 || status === 'valid' ? "Valid" : "Invalid");
+      const media = r.media_valid !== undefined ? (r.media_valid ? "Valid" : "Invalid") : "Valid";
+      
+      const scan_time = r.scan_time || (r.marked_at ? r.marked_at.split('T')[1]?.slice(0, 8) : 'N/A');
+      const reason = r.suspicious_reason || (status === 'suspicious' ? 'One or more validation checks failed' : status === 'rejected' ? 'Confidence score too low' : '');
+      
+      return [studentName, status, score, qr, gps, wifi, device, media, scan_time, reason];
+    });
+    
+    downloadCSV(`session_${sessionId}_attendance.csv`, headers, rows);
+  } catch (e) {
+    alert("Export CSV failed: " + e.message);
+  }
+}
+
+function printHistoryTable() {
+  window.print();
+}
+
+// -------------------------------------------------------------
+// FEATURE 3 — HIGHLIGHT STUDENTS BELOW 75%
+// -------------------------------------------------------------
+async function loadStudentOverview(endedSessions) {
+  const grid = document.getElementById('studentsGrid');
+  grid.innerHTML = `
+    <div class="spinner-wrap">
+      <div class="spinner"></div>
+      <p>Loading student overview...</p>
+    </div>
+  `;
+  
+  const latestSession = endedSessions[0];
+  try {
+    const r = await fetch(`${BASE}/analytics/session/${latestSession.session_id}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) throw new Error("Analytics retrieval failed");
+    
+    const data = await r.json();
+    let rawList = Array.isArray(data) ? data : (data.students || []);
+    
+    const uniqueIds = [...new Set(rawList.map(s => s.student_id))];
+    
+    const promises = uniqueIds.map(async (id) => {
+      try {
+        const res = await fetch(`${BASE}/analytics/student/${id}`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) return null;
+        const sData = await res.json();
+        
+        const studentName = sData.student_name || ("Student " + id);
+        let courseName = latestSession.subject;
+        let totalSessions = sData.total || 0;
+        let attended = sData.present || 0;
+        let percentage = sData.attendance_percentage || 0;
+
+        if (sData.courses && sData.courses.length > 0) {
+          const c = sData.courses[0];
+          courseName = c.course_name;
+          totalSessions = c.total_sessions;
+          attended = c.attended;
+          percentage = c.attendance_percentage;
+        }
+        
+        return {
+          student_id: id,
+          student_name: studentName,
+          course_name: courseName,
+          total_sessions: totalSessions,
+          attended: attended,
+          attendance_percentage: percentage
+        };
+      } catch (err) {
+        return null;
+      }
+    });
+    
+    const results = await Promise.all(promises);
+    allStudentDetails = results.filter(r => r !== null);
+    
+    filterStudentCards();
+  } catch (e) {
+    console.error("Overview loading failed:", e);
+    showSectionError('students', e.message);
+  }
+}
+
+function setStudentFilter(filterType) {
+  currentStudentFilter = filterType;
+  document.getElementById('filter-all').classList.remove('active-filter');
+  document.getElementById('filter-below').classList.remove('active-filter');
+  document.getElementById('filter-above').classList.remove('active-filter');
+  document.getElementById(`filter-${filterType}`).classList.add('active-filter');
+  filterStudentCards();
+}
+
+function filterStudentCards() {
+  const searchQuery = document.getElementById('studentSearch').value.toLowerCase();
+  const filtered = allStudentDetails.filter(s => {
+    const matchesSearch = s.student_name.toLowerCase().includes(searchQuery);
+    
+    let matchesPercentage = true;
+    if (currentStudentFilter === 'below') {
+      matchesPercentage = s.attendance_percentage < 75;
+    } else if (currentStudentFilter === 'above') {
+      matchesPercentage = s.attendance_percentage >= 75;
+    }
+    
+    return matchesSearch && matchesPercentage;
+  });
+  
+  renderFilteredStudentCards(filtered);
+}
+
+function renderFilteredStudentCards(list) {
+  const grid = document.getElementById('studentsGrid');
+  if (!list || list.length === 0) {
+    grid.innerHTML = '<p class="empty-state">No students match the criteria.</p>';
+    return;
+  }
+  
+  grid.innerHTML = list.map(s => {
+    const isWarning = s.attendance_percentage < 75;
+    const border = isWarning ? '#e74c3c' : '#27ae60';
+    const textCol = isWarning ? '#e74c3c' : '#27ae60';
+    const icon = isWarning ? '🚨' : '✅';
+    const latestEnded = endedSessions[0];
+    
+    return `
+      <div class="student-card" style="border: 2px solid ${border};" onclick="openAuditModal(${latestEnded.session_id}, '${latestEnded.subject}', '${latestEnded.date}', '${s.student_id}')">
+        <div class="student-card-icon">${icon}</div>
+        <h3>${s.student_name}</h3>
+        <p class="course-name">${s.course_name}</p>
+        <p class="attendance-count">Attendance: <b>${s.attended} / ${s.total_sessions}</b> sessions</p>
+        
+        <div class="progress-wrap">
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" style="width: ${s.attendance_percentage}%; background-color: ${border};"></div>
+          </div>
+          <span class="progress-pct" style="color: ${textCol};">${s.attendance_percentage.toFixed(1)}%</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// -------------------------------------------------------------
+// FEATURE 4 — CHARTS & ANALYTICS
+// -------------------------------------------------------------
+function renderCharts(sessions) {
+  if (!sessions || sessions.length === 0) return;
+  
+  // Oldest first for chron lines
+  const chronSessions = [...sessions].reverse();
+  const labels = chronSessions.map(s => formatShortDate(s.date));
+  
+  const attendedPct = chronSessions.map(s => s.total_students > 0 ? (s.attended / s.total_students * 100) : 0);
+  const suspiciousPct = chronSessions.map(s => s.total_students > 0 ? (s.suspicious / s.total_students * 100) : 0);
+  const rejectedPct = chronSessions.map(s => s.total_students > 0 ? (s.rejected / s.total_students * 100) : 0);
+  
+  // Line Chart
+  const ctxA = document.getElementById('chartA').getContext('2d');
+  if (chartA) chartA.destroy();
+  chartA = new Chart(ctxA, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Attended %',
+          data: attendedPct,
+          borderColor: '#27ae60',
+          backgroundColor: 'transparent',
+          tension: 0.2
+        },
+        {
+          label: 'Suspicious %',
+          data: suspiciousPct,
+          borderColor: '#e67e22',
+          backgroundColor: 'transparent',
+          tension: 0.2
+        },
+        {
+          label: 'Rejected %',
+          data: rejectedPct,
+          borderColor: '#e74c3c',
+          backgroundColor: 'transparent',
+          tension: 0.2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: 'Session-wise Attendance Trend' },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const index = context.dataIndex;
+              const s = chronSessions[index];
+              return `${context.dataset.label}: ${context.raw.toFixed(1)}% (${s.attended} attended, ${s.suspicious} suspicious, ${s.rejected} rejected)`;
+            }
+          }
+        }
+      },
+      scales: { y: { min: 0, max: 100 } }
+    }
+  });
+
+  // Doughnut aggregate
+  let totalValid = 0;
+  let totalSuspicious = 0;
+  let totalRejected = 0;
+  let totalAbsent = 0;
+  
+  sessions.forEach(s => {
+    totalValid += s.attended;
+    totalSuspicious += s.suspicious;
+    totalRejected += s.rejected;
+    const absent = s.total_students - (s.attended + s.suspicious + s.rejected);
+    totalAbsent += absent > 0 ? absent : 0;
+  });
+  
+  const ctxB = document.getElementById('chartB').getContext('2d');
+  if (chartB) chartB.destroy();
+  chartB = new Chart(ctxB, {
+    type: 'doughnut',
+    data: {
+      labels: ['Valid', 'Suspicious', 'Rejected', 'Absent'],
+      datasets: [{
+        data: [totalValid, totalSuspicious, totalRejected, totalAbsent],
+        backgroundColor: ['#27ae60', '#e67e22', '#e74c3c', '#95a5a6']
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: 'Overall Attendance Distribution' },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const pct = total > 0 ? (context.raw / total * 100).toFixed(1) : 0;
+              return `${context.label}: ${context.raw} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// FEATURE 5 — FULL AUDIT LOG MODAL
+// -------------------------------------------------------------
+async function openAuditModal(sessionId, subject, date, filterStudentId = null) {
+  document.getElementById('auditModal').classList.remove('hidden');
+  document.getElementById('auditLoading').classList.remove('hidden');
+  document.getElementById('auditContent').classList.add('hidden');
+  
+  document.getElementById('auditHeaderTitle').textContent = `🔍 Audit Log — ${subject} (${date})`;
+  
+  currentAuditSession = { id: sessionId, subject, date };
+  
+  try {
+    const r = await fetch(`${BASE}/analytics/session/${sessionId}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) throw new Error("Failed to fetch logs");
+    const data = await r.json();
+    let rawList = Array.isArray(data) ? data : (data.students || []);
+    
+    currentAuditRecords = rawList.map(r => {
+      const studentName = r.student_name || ("Student " + r.student_id);
+      const status = r.status || "absent";
+      const score = r.confidence_score !== undefined ? r.confidence_score : (r.confidence || 0);
+      
+      const qr = r.qr_valid !== undefined ? r.qr_valid : (score >= 25);
+      const gps = r.gps_valid !== undefined ? r.gps_valid : (score >= 45 || status === 'valid');
+      const wifi = r.wifi_valid !== undefined ? r.wifi_valid : (score >= 65 || status === 'valid');
+      const device = r.device_valid !== undefined ? r.device_valid : (score >= 80 || status === 'valid');
+      const media = r.media_valid !== undefined ? r.media_valid : true;
+      
+      const gps_distance = r.gps_distance_meters !== undefined ? r.gps_distance_meters : 15.0;
+      const bssid_matched = r.wifi_bssid_matched !== undefined ? r.wifi_bssid_matched : true;
+      const scan_time = r.scan_time || (r.marked_at ? r.marked_at.split('T')[1]?.slice(0, 8) : 'N/A');
+      const delay = r.delay_from_start_seconds !== undefined ? r.delay_from_start_seconds : 120;
+      const reason = r.suspicious_reason || (status === 'suspicious' ? 'One or more validation checks failed' : status === 'rejected' ? 'Confidence score too low' : null);
+      
+      return {
+        student_id: r.student_id,
+        student_name: studentName,
+        status: status,
+        confidence_score: score,
+        qr_valid: qr,
+        gps_valid: gps,
+        wifi_valid: wifi,
+        device_valid: device,
+        media_valid: media,
+        gps_distance_meters: gps_distance,
+        wifi_bssid_matched: bssid_matched,
+        scan_time: scan_time,
+        delay_from_start_seconds: delay,
+        suspicious_reason: reason
+      };
+    });
+    
+    let displayRecords = currentAuditRecords;
+    if (filterStudentId !== null) {
+      displayRecords = currentAuditRecords.filter(r => String(r.student_id) === String(filterStudentId));
+    }
+    
+    renderAuditTable(displayRecords);
+    
+    document.getElementById('auditLoading').classList.add('hidden');
+    document.getElementById('auditContent').classList.remove('hidden');
+  } catch (e) {
+    console.error("Modal fetch failed:", e);
+    document.getElementById('auditLoading').classList.add('hidden');
+    alert("Audit log loading failed.");
+  }
+}
+
+function renderAuditTable(records) {
+  const tbody = document.getElementById('auditTableBody');
+  if (records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No audit logs for this query.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = records.map(r => {
+    const qrIcon = r.qr_valid ? '✅' : '❌';
+    const gpsIcon = r.gps_valid ? '✅' : '❌';
+    const wifiIcon = r.wifi_valid ? '✅' : '❌';
+    const deviceIcon = r.device_valid ? '✅' : '❌';
+    const mediaIcon = r.media_valid ? '✅' : '❌';
+    
+    let statusClass = 'badge-absent';
+    if (r.status === 'valid') statusClass = 'badge-valid';
+    else if (r.status === 'suspicious') statusClass = 'badge-suspicious';
+    else if (r.status === 'rejected') statusClass = 'badge-rejected';
+    
+    let scoreColor = '#e74c3c';
+    if (r.confidence_score >= 80) scoreColor = '#27ae60';
+    else if (r.confidence_score >= 60) scoreColor = '#e67e22';
+    
+    return `
+      <tr>
+        <td><b>${r.student_name}</b></td>
+        <td><span class="badge ${statusClass}">${r.status}</span></td>
+        <td><span style="color:${scoreColor}; font-weight:bold">${r.confidence_score}</span></td>
+        <td>${qrIcon}</td>
+        <td>${gpsIcon}</td>
+        <td>${wifiIcon}</td>
+        <td>${deviceIcon}</td>
+        <td>${mediaIcon}</td>
+        <td>
+          <button id="audit-btn-${r.student_id}" class="sm-btn" style="padding:4px 8px; width:auto; margin:0;" onclick="toggleAuditDetailRow('${r.student_id}')">▼</button>
+        </td>
+      </tr>
+      <tr id="audit-detail-${r.student_id}" class="hidden audit-detail-row">
+        <td colspan="9">
+          <div class="audit-details-content">
+            <p><b>GPS Distance:</b> ${r.gps_distance_meters.toFixed(1)}m ${r.gps_valid ? '✅ (within 30m limit)' : '❌ (outside 30m limit)'}</p>
+            <p><b>WiFi BSSID:</b> ${r.wifi_valid ? 'Matched ✅' : 'Mismatch ❌'}</p>
+            <p><b>Scan Time:</b> ${r.scan_time}</p>
+            <p><b>Delay from Start:</b> ${formatSeconds(r.delay_from_start_seconds)}</p>
+            <p><b>Suspicious Reason:</b> <span style="color: ${r.suspicious_reason ? '#e74c3c' : '#718096'}">${r.suspicious_reason || 'None'}</span></p>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function toggleAuditDetailRow(studentId) {
+  const detailRow = document.getElementById(`audit-detail-${studentId}`);
+  const btn = document.getElementById(`audit-btn-${studentId}`);
+  if (detailRow.classList.contains('hidden')) {
+    detailRow.classList.remove('hidden');
+    btn.textContent = '▲';
+  } else {
+    detailRow.classList.add('hidden');
+    btn.textContent = '▼';
+  }
+}
+
+function closeAuditModal() {
+  document.getElementById('auditModal').classList.add('hidden');
+}
+
+function closeAuditModalOutside(event) {
+  if (event.target === document.getElementById('auditModal')) {
+    closeAuditModal();
+  }
+}
+
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    closeAuditModal();
+  }
+});
+
+function exportAuditCSV() {
+  if (!currentAuditSession || currentAuditRecords.length === 0) return;
+  
+  const headers = [
+    "Student Name", "Status", "Confidence Score", 
+    "QR Valid", "GPS Valid", "WiFi Valid", "Device Valid", "Media Valid", 
+    "GPS Distance (m)", "BSSID Matched", "Scan Time", "Delay (sec)", "Suspicious Reason"
+  ];
+  
+  const rows = currentAuditRecords.map(r => [
+    r.student_name,
+    r.status,
+    r.confidence_score,
+    r.qr_valid ? "YES" : "NO",
+    r.gps_valid ? "YES" : "NO",
+    r.wifi_valid ? "YES" : "NO",
+    r.device_valid ? "YES" : "NO",
+    r.media_valid ? "YES" : "NO",
+    r.gps_distance_meters.toFixed(1),
+    r.wifi_bssid_matched ? "YES" : "NO",
+    r.scan_time,
+    r.delay_from_start_seconds,
+    r.suspicious_reason || ""
+  ]);
+  
+  downloadCSV(`audit_${currentAuditSession.id}.csv`, headers, rows);
+}
+
+// -------------------------------------------------------------
+// SIDEBAR NAVIGATION & OBSERVER
+// -------------------------------------------------------------
+function scrollToSection(sectionId, event) {
+  if (event) event.preventDefault();
+  const el = document.getElementById(sectionId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+function setupNavObserver() {
+  const sections = document.querySelectorAll('.dashboard-section');
+  const navItems = document.querySelectorAll('.nav-item');
+  const topbarTitle = document.getElementById('topbarTitle');
+  
+  const observerOptions = {
+    root: null,
+    threshold: 0.3,
+    rootMargin: "-20px 0px 0px 0px"
+  };
+  
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.getAttribute('id');
+        navItems.forEach(item => {
+          if (item.getAttribute('href') === `#${id}`) {
+            item.classList.add('active');
+            // Update Topbar header
+            if (topbarTitle) {
+              if (id === 'activeSession') topbarTitle.textContent = 'Dashboard Overview';
+              else if (id === 'alertsSection') topbarTitle.textContent = 'Smart Alerts Feed';
+              else if (id === 'historySection') topbarTitle.textContent = 'Session History Logs';
+              else if (id === 'studentsSection') topbarTitle.textContent = 'Student Performance Overview';
+              else if (id === 'analyticsSection') topbarTitle.textContent = 'Dashboard Analytics';
+            }
+          } else {
+            item.classList.remove('active');
+          }
+        });
+      }
+    });
+  }, observerOptions);
+  
+  sections.forEach(section => observer.observe(section));
 }
 </script>
 </body>

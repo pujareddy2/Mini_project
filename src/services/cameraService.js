@@ -23,7 +23,7 @@ async function capturePhoto(cameraRef) {
 
   const photo = await cameraRef.current.takePictureAsync({
     quality: 0.6,
-    skipProcessing: true,
+    exif: true,
   });
 
   if (!photo?.uri) {
@@ -49,6 +49,7 @@ async function recordVideo(cameraRef) {
   const video = await cameraRef.current.recordAsync({
     maxDuration: 3,
     quality: '480p',
+    mute: true,
   });
 
   if (!video?.uri) {

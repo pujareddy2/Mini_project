@@ -144,7 +144,7 @@ function ResultScreen({ navigation, route }) {
             title={flags.location ? 'Location Verified' : 'Location Failed'}
             status={statusFromFlag(flags.location)}
             subtitle={flags.location ? `Room: ${attendanceResult.room_name || 'Classroom'}` : 'Outside campus range'}
-            extraInfo={flags.location ? `Distance: ${attendanceResult.distance ?? 0}m (Allowed: 50m)` : `Distance: ${attendanceResult.distance ?? 'N/A'}m`}
+            extraInfo={flags.location ? `Distance: ${attendanceResult.distance ?? 0}m (Allowed: 5000m)` : `Distance: ${attendanceResult.distance ?? 'N/A'}m (Allowed: 5000m)`}
           />
           <ValidationItem
             title={flags.wifi ? 'WiFi Verified' : 'WiFi Failed'}

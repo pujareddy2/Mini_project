@@ -88,6 +88,26 @@ def student_login(
 			detail="Invalid email or password",
 		)
 	
+	# Enforce device locking for students
+	if user.role == "student" and payload.device_id:
+		binding = db.query(models.DeviceBinding).filter(
+			models.DeviceBinding.student_id == user.id
+		).first()
+		
+		if binding:
+			if binding.device_id != payload.device_id:
+				raise HTTPException(
+					status_code=status.HTTP_400_BAD_REQUEST,
+					detail="This student account is bound to another device. You can only log in from your registered device.",
+				)
+		else:
+			new_binding = models.DeviceBinding(
+				student_id=user.id,
+				device_id=payload.device_id,
+			)
+			db.add(new_binding)
+			db.commit()
+
 	access_token = create_access_token({"sub": user.email})
 	
 	return {

@@ -25,7 +25,7 @@ function ProcessingScreen({ navigation, route }) {
   useEffect(() => {
     const runAttendanceFlow = async () => {
       try {
-        const { qrToken: token, photoUri, cameraCancelled, sessionId: paramSessionId } = route.params || {};
+        const { qrToken: token, photoUri, mediaType, cameraCancelled, sessionId: paramSessionId } = route.params || {};
 
         if (!token) {
           setScreenState('invalid');
@@ -57,7 +57,7 @@ function ProcessingScreen({ navigation, route }) {
         // Upload media only if photo exists
         let mediaUrl = 'no_photo';
         if (finalPhotoUri) {
-          mediaUrl = await uploadMedia(finalPhotoUri);
+          mediaUrl = await uploadMedia(finalPhotoUri, mediaType);
         }
 
         const result = await submitAttendance({

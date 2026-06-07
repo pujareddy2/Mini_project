@@ -342,7 +342,7 @@ function HomeScreen({ navigation }) {
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontWeight: '600', fontSize: 14 }}>{stu.name}</Text>
                           <Text style={{ fontSize: 12, color: '#64748b' }}>
-                            Last: {stu.latest_status ? (stu.latest_status === 'valid' ? '✅ Present' : '❌ Rejected') : 'None'}
+                            Last: {stu.latest_status ? (stu.latest_status === 'valid' ? '✅ Present' : stu.latest_status === 'suspicious' ? '⚠️ Suspicious' : '❌ Rejected') : 'None'}
                           </Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>

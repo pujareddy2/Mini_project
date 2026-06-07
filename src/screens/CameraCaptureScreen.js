@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import {
   ActivityIndicator,
   Image,
@@ -25,6 +25,8 @@ function CameraCaptureScreen({ navigation, route }) {
   const token = route.params?.qrToken || route.params?.token;
   const cameraRef = useRef(null);
   const [permission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+  const [facing, setFacing] = useState('front');
   const [isCapturing, setIsCapturing] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [captureMode, setCaptureMode] = useState('photo');
@@ -39,9 +41,11 @@ function CameraCaptureScreen({ navigation, route }) {
 
       if (!permissionResult.granted) {
         setErrorText('Camera permission is required to capture identity proof.');
-      } else {
-        setErrorText('');
+        return;
       }
+
+      await requestMicPermission();
+      setErrorText('');
     } catch {
       setErrorText('Camera is unavailable on this device.');
     } finally {
@@ -68,17 +72,25 @@ function CameraCaptureScreen({ navigation, route }) {
       return;
     }
 
+    if (captureMode === 'video' && (!micPermission || !micPermission.granted)) {
+      const res = await requestMicPermission();
+      if (!res.granted) {
+        setErrorText('Microphone permission is required to record video. Please enable it in device settings.');
+        return;
+      }
+    }
+
     try {
       setIsCapturing(true);
       setErrorText('');
-      setCaptureSuccessText('Capturing image...');
+      setCaptureSuccessText(captureMode === 'video' ? 'Recording video (3s)...' : 'Capturing image...');
 
       const media = captureMode === 'video'
         ? await recordVideo(cameraRef)
         : await capturePhoto(cameraRef);
 
       setPreviewMedia(media);
-      setCaptureSuccessText('Photo captured successfully');
+      setCaptureSuccessText(captureMode === 'video' ? 'Video recorded successfully' : 'Photo captured successfully');
     } catch (error) {
       const normalizedError = handleError(error);
       setCaptureSuccessText('');
@@ -97,6 +109,7 @@ function CameraCaptureScreen({ navigation, route }) {
       qrToken: token,
       sessionId: route.params?.sessionId,
       photoUri: previewMedia.uri,
+      mediaType: previewMedia.type,
       cameraCancelled: false,
     });
   }
@@ -146,6 +159,14 @@ function CameraCaptureScreen({ navigation, route }) {
     <ScreenLayout contentStyle={styles.contentStyle}>
       <View style={styles.topBar}>
         <AppButton label="Cancel" variant="secondary" onPress={handleCancelCapture} style={styles.cancelButton} />
+        {!previewMedia?.uri ? (
+          <AppButton 
+            label="Flip Camera" 
+            variant="secondary" 
+            onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}
+            style={styles.flipButton}
+          />
+        ) : null}
       </View>
 
       <View style={styles.previewWrap}>
@@ -153,7 +174,12 @@ function CameraCaptureScreen({ navigation, route }) {
           <Image source={{ uri: previewMedia.uri }} style={styles.cameraPreview} resizeMode="cover" />
         ) : (
           <>
-            <CameraView ref={cameraRef} style={styles.cameraPreview} />
+            <CameraView 
+              ref={cameraRef} 
+              style={styles.cameraPreview} 
+              mode={captureMode === 'video' ? 'video' : 'picture'} 
+              facing={facing}
+            />
             <View style={[styles.overlayFrame, { pointerEvents: 'none' }]} />
           </>
         )}
@@ -167,14 +193,26 @@ function CameraCaptureScreen({ navigation, route }) {
         <View style={styles.modeToggle}>
           <Pressable
             style={[styles.modePill, captureMode === 'photo' && styles.modePillActive]}
-            onPress={() => setCaptureMode('photo')}
+            onPress={() => {
+              setErrorText('');
+              setCaptureMode('photo');
+            }}
             disabled={isCapturing}
           >
             <Text style={[styles.modeText, captureMode === 'photo' && styles.modeTextActive]}>Photo</Text>
           </Pressable>
           <Pressable
             style={[styles.modePill, captureMode === 'video' && styles.modePillActive]}
-            onPress={() => setCaptureMode('video')}
+            onPress={async () => {
+              setErrorText('');
+              setCaptureMode('video');
+              if (!micPermission || !micPermission.granted) {
+                const res = await requestMicPermission();
+                if (!res.granted) {
+                  setErrorText('Microphone permission is required to record video. Please enable it in device settings.');
+                }
+              }
+            }}
             disabled={isCapturing}
           >
             <Text style={[styles.modeText, captureMode === 'video' && styles.modeTextActive]}>Video (3s)</Text>
@@ -187,6 +225,18 @@ function CameraCaptureScreen({ navigation, route }) {
           <AppButton label="Retake" variant="secondary" onPress={handleRetake} style={styles.halfButton} />
           <AppButton label="Confirm" onPress={handleConfirmCapture} style={styles.halfButton} />
         </View>
+      ) : captureMode === 'video' && (!micPermission || !micPermission.granted) ? (
+        <AppButton
+          label="Grant Microphone Permission"
+          onPress={async () => {
+            const res = await requestMicPermission();
+            if (!res.granted) {
+              setErrorText('Microphone permission is required to record video. Please enable it in device settings.');
+            } else {
+              setErrorText('');
+            }
+          }}
+        />
       ) : (
         <AppButton
           label={isCapturing ? (captureMode === 'video' ? 'Recording...' : 'Capturing image...') : (captureMode === 'video' ? 'Record 3s Video' : 'Capture Photo')}
@@ -204,9 +254,14 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   topBar: {
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
   },
   cancelButton: {
+    minWidth: 110,
+  },
+  flipButton: {
     minWidth: 110,
   },
   previewWrap: {

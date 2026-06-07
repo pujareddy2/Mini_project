@@ -44,7 +44,7 @@ function ErrorScreen({ navigation, route }) {
     description: 'Please retry attendance after checking permissions and connectivity.',
   };
 
-  const message = route.params?.message || result?.message || reasonInfo.title;
+  const message = route.params?.error || route.params?.message || result?.message || reasonInfo.title;
   const details = result?.details || { location: false, wifi: false, photo: false };
   const reasons = result?.reasons || ['outside location'];
   const wifiReason = validationResult?.wifi?.reason || result?.wifi?.reason;
