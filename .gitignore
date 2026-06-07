@@ -31,7 +31,13 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# Python cache
+**/__pycache__/
+*.pyc
+saais-backend/saais.db
 
 # typescript
 *.tsbuildinfo
