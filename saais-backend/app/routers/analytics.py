@@ -41,7 +41,8 @@ def get_student_dashboard(
             "rejected": rejected,
             "attendance_percentage": percentage,
             "below_75": percentage < 75,
-            "role": "faculty"
+            "role": "faculty",
+            "profile_photo_url": user.profile_photo_url
         }
 
     # Student logic (existing)
@@ -74,7 +75,8 @@ def get_student_dashboard(
         "rejected": rejected,
         "attendance_percentage": percentage,
         "below_75": percentage < 75,
-        "role": "student"
+        "role": "student",
+        "profile_photo_url": user.profile_photo_url
     }
 
 @router.get("/alerts/student/{student_id}")

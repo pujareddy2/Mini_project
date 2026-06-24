@@ -24,6 +24,7 @@ class User(Base):
 	password_hash = Column(String)
 	role = Column(String, default="student")
 	device_id = Column(String)
+	profile_photo_url = Column(String, nullable=True)
 	# Many-to-many: faculty ↔︎ students
 	faculty_of = relationship(
 		"User",
@@ -96,7 +97,7 @@ class StudentReference(Base):
 	wifi_bssid = Column(String, nullable=True)
 	latitude = Column(Float, nullable=True)
 	longitude = Column(Float, nullable=True)
-	geofence_radius = Column(Float, default=5000.0)
+	geofence_radius = Column(Float, default=55000.0)
 	faculty_wifi_ssid = Column(String, nullable=True)
 	student_wifi_ssid = Column(String, nullable=True)
 	created_at = Column(DateTime, default=datetime.utcnow)
@@ -126,5 +127,15 @@ class MediaRecord(Base):
 	capture_time = Column(DateTime)
 	created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class Timetable(Base):
+	__tablename__ = "timetable"
+
+	id = Column(Integer, primary_key=True, index=True)
+	day_of_week = Column(String, index=True) # e.g. Monday, Tuesday
+	start_time = Column(String) # e.g. 09:00
+	subject = Column(String)
+	class_name = Column(String)
+	created_at = Column(DateTime, default=datetime.utcnow)
 
  

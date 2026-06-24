@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, TextInput, View, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -95,26 +95,69 @@ function LoginScreen({ navigation }) {
     try {
       setIsUploadingPhoto(true);
       if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          setErrorMessage('Profile photo access is required to upload an image.');
+        const permissionLib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const permissionCam = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permissionLib.granted || !permissionCam.granted) {
+          setErrorMessage('Profile photo access and camera permissions are required.');
+          setIsUploadingPhoto(false);
           return;
         }
-      }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
+        import('react-native').then(({ Alert }) => {
+          Alert.alert(
+            "Upload Photo",
+            "Choose an option",
+            [
+              { 
+                text: "Camera", 
+                onPress: async () => {
+                  try {
+                    const result = await ImagePicker.launchCameraAsync({
+                      allowsEditing: true,
+                      aspect: [1, 1],
+                      quality: 0.7,
+                    });
+                    if (!result.canceled && result.assets?.[0]?.uri) {
+                      setProfilePhotoUri(result.assets[0].uri);
+                    }
+                  } finally { setIsUploadingPhoto(false); }
+                }
+              },
+              { 
+                text: "Files", 
+                onPress: async () => {
+                  try {
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      allowsEditing: true,
+                      aspect: [1, 1],
+                      quality: 0.7,
+                    });
+                    if (!result.canceled && result.assets?.[0]?.uri) {
+                      setProfilePhotoUri(result.assets[0].uri);
+                    }
+                  } finally { setIsUploadingPhoto(false); }
+                }
+              },
+              { text: "Cancel", style: "cancel", onPress: () => setIsUploadingPhoto(false) }
+            ]
+          );
+        });
+      } else {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        });
 
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        setProfilePhotoUri(result.assets[0].uri);
+        if (!result.canceled && result.assets?.[0]?.uri) {
+          setProfilePhotoUri(result.assets[0].uri);
+        }
+        setIsUploadingPhoto(false);
       }
-    } catch {
-      setErrorMessage('Unable to access photo library on this device.');
-    } finally {
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to access photo library on this device.');
       setIsUploadingPhoto(false);
     }
   }
@@ -133,6 +176,11 @@ function LoginScreen({ navigation }) {
       || !branch.trim()
     ) {
       setErrorMessage('Please complete all required registration fields.');
+      return;
+    }
+
+    if (!profilePhotoUri) {
+      setErrorMessage('Profile photo is required for attendance verification.');
       return;
     }
 
@@ -401,7 +449,7 @@ function LoginScreen({ navigation }) {
               </View>
 
               <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Profile Photo (optional)</Text>
+                <Text style={styles.label}>Profile Photo (Required)</Text>
                 <AppButton
                   label={isUploadingPhoto ? 'Uploading...' : 'Upload Profile Photo'}
                   onPress={handlePickPhoto}

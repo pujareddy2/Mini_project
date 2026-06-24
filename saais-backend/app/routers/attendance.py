@@ -1,6 +1,5 @@
 import math
 from datetime import datetime, timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
@@ -153,6 +152,7 @@ def submit_attendance(
 	score = 0
 	qr_valid = False
 	gps_valid = False
+	gps_warning = False
 	wifi_valid = False
 	device_valid = False
 	media_valid = bool(payload.media_url) if hasattr(payload, 'media_url') else True
@@ -171,11 +171,12 @@ def submit_attendance(
 	)
 
 	# 2) GPS Validation (20 pts)
-	distance = 0.0
+	distance = -1.0
 	if reference:
 		# Subsequent check: validate against registered reference location
 		if payload.gps_lat == 0 and payload.gps_lon == 0:
 			gps_valid = False
+			distance = -1.0
 		else:
 			distance = haversine(
 				payload.gps_lat,
@@ -183,13 +184,19 @@ def submit_attendance(
 				reference.latitude,
 				reference.longitude,
 			)
-			if distance <= 5000.0:  # 5000 meters geofence
+
+			if distance <= 1000.0:  # 1km geofence
 				gps_valid = True
 				score += 20
+			elif distance <= 1100.0 and payload.gps_accuracy and payload.gps_accuracy <= 50.0:
+				gps_valid = True
+				gps_warning = True
+				score += 15
 	else:
 		# First check: validate against classroom location
 		if payload.gps_lat == 0 and payload.gps_lon == 0:
 			gps_valid = False
+			distance = -1.0
 		else:
 			distance = haversine(
 				payload.gps_lat,
@@ -197,9 +204,14 @@ def submit_attendance(
 				session.classroom_lat,
 				session.classroom_lon,
 			)
-			if distance <= 5000.0:  # 5000 meters geofence
+			
+			if distance <= 1000.0:  # 1km geofence
 				gps_valid = True
 				score += 20
+			elif distance <= 1100.0 and payload.gps_accuracy and payload.gps_accuracy <= 50.0:
+				gps_valid = True
+				gps_warning = True
+				score += 15
 
 	# 3) WiFi Validation (20 pts)
 	if reference:
@@ -233,7 +245,7 @@ def submit_attendance(
 		else:
 			wifi_valid = False
 
-	# 4) Media Validation (20 pts)
+	# 4) Media Validation & Liveness (20 pts)
 	if not payload.media_url:
 		media_valid = True  # don't fail, but skip score
 	else:
@@ -242,8 +254,22 @@ def submit_attendance(
 			models.MediaRecord.student_id == current_user.id
 		).first()
 		if media_rec:
-			media_valid = True
-			score += 20
+			from app.services.face_service import verify_face, check_liveness
+			if not current_user.profile_photo_url:
+				# Cannot verify if student has no profile photo
+				media_valid = False
+			else:
+				profile_path = current_user.profile_photo_url.lstrip("/")
+				attendance_path = media_rec.filepath
+				
+				is_live = check_liveness(attendance_path)
+				is_match, dist_face = verify_face(profile_path, attendance_path)
+				
+				if is_live and is_match:
+					media_valid = True
+					score += 20
+				else:
+					media_valid = False
 
 	# 5) Device Validation (15 pts)
 	binding = (
@@ -267,16 +293,19 @@ def submit_attendance(
 		device_valid = True
 		score += 15
 
-	# Status thresholds (as per PDF requirements)
-	# 80-100: valid
-	# 60-79: suspicious
+	# Status thresholds
+	# 75-100: valid
+	# 60-74: suspicious
 	# Below 60: rejected
-	if score >= 80:
+	if not media_valid:
+		status_value = "rejected"
+		message = "Attendance rejected: Face verification failed. You are not the registered student."
+	elif score >= 75 and not gps_warning:
 		status_value = "valid"
 		message = "Attendance marked successfully"
 	elif score >= 60:
 		status_value = "suspicious"
-		message = "Attendance flagged: One or more security factors failed"
+		message = "Attendance flagged: One or more security factors failed or low GPS accuracy"
 	else:
 		status_value = "rejected"
 		message = "Attendance rejected: Multiple validation failures"
@@ -307,7 +336,7 @@ def submit_attendance(
 			wifi_bssid=payload.bssid,
 			latitude=payload.gps_lat,
 			longitude=payload.gps_lon,
-			geofence_radius=5000.0,
+			geofence_radius=600.0,
 			faculty_wifi_ssid=session.wifi_ssid,
 			student_wifi_ssid=payload.wifi_ssid
 		)
@@ -405,6 +434,7 @@ def submit_attendance(
 		"attendanceId": f"ATT-{record.id}",
 		"message": message,
 		"distance": round(distance, 1) if 'distance' in locals() else 0.0,
+		"gps_warning": gps_warning,
 		"room_name": session.room_name or "Classroom"
 	}
  

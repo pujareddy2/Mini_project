@@ -129,6 +129,25 @@ function CameraCaptureScreen({ navigation, route }) {
     });
   }
 
+  async function handlePickFile() {
+    try {
+      const result = await import('expo-image-picker').then(ImagePicker => 
+        ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        })
+      );
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setPreviewMedia({ uri: result.assets[0].uri, type: 'photo' });
+        setCaptureSuccessText('File selected successfully');
+      }
+    } catch (error) {
+      setErrorText('Failed to pick file from gallery.');
+    }
+  }
+
   if (permission?.granted === false) {
     return (
       <ScreenLayout contentStyle={styles.contentStyle}>
@@ -141,7 +160,8 @@ function CameraCaptureScreen({ navigation, route }) {
             loading={isRequestingPermission}
             disabled={isRequestingPermission}
           />
-          <AppButton label="Cancel Capture" variant="secondary" onPress={handleCancelCapture} />
+          <AppButton label="Pick from Files Instead" variant="secondary" onPress={handlePickFile} style={{ marginTop: 8 }} />
+          <AppButton label="Cancel Capture" variant="secondary" onPress={handleCancelCapture} style={{ marginTop: 8 }} />
         </Card>
       </ScreenLayout>
     );
@@ -216,6 +236,13 @@ function CameraCaptureScreen({ navigation, route }) {
             disabled={isCapturing}
           >
             <Text style={[styles.modeText, captureMode === 'video' && styles.modeTextActive]}>Video (3s)</Text>
+          </Pressable>
+          <Pressable
+            style={styles.modePill}
+            onPress={handlePickFile}
+            disabled={isCapturing}
+          >
+            <Text style={styles.modeText}>Files</Text>
           </Pressable>
         </View>
       ) : null}

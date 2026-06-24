@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { BASE_URL } from '../config';
 
 export const loginStudent = async (email, password, deviceInfo) => {
@@ -45,17 +46,36 @@ export const loginStudent = async (email, password, deviceInfo) => {
 
 export const registerStudent = async (studentProfile) => {
   try {
+    const formData = new FormData();
+    formData.append('name', studentProfile.name);
+    formData.append('email', studentProfile.email);
+    formData.append('password', studentProfile.password);
+    formData.append('role', 'student');
+    
+    if (studentProfile.profilePhotoUri) {
+      const uri = studentProfile.profilePhotoUri;
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        formData.append('profile_photo', blob, 'profile.jpg');
+      } else {
+        const filename = uri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image`;
+        formData.append('profile_photo', {
+          uri,
+          name: filename,
+          type,
+        });
+      }
+    }
+
     const response = await fetch(`${BASE_URL}/auth/register`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: JSON.stringify({
-        name: studentProfile.name,
-        email: studentProfile.email,
-        password: studentProfile.password,
-        role: 'student',
-      }),
+      body: formData,
     });
 
     const data = await response.json();

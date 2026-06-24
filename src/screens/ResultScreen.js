@@ -34,6 +34,12 @@ const STATUS_META = {
     accent: '#EF4444',
     gradient: ['#fff1f2', '#ffe4e6'],
   },
+  already_marked: {
+    icon: 'ℹ️',
+    title: 'Attendance Already Marked',
+    accent: '#3B82F6',
+    gradient: ['#eff6ff', '#dbeafe'],
+  },
 };
 
 function statusFromFlag(flag) {
@@ -126,46 +132,54 @@ function ResultScreen({ navigation, route }) {
         <Text style={styles.heroSubtitle}>{attendanceResult.message || 'Verification complete.'}</Text>
       </LinearGradient>
 
-      <Animated.View style={{ opacity: contentOpacity }}>
-        <Card style={styles.confidenceCard}>
-          <Text style={styles.sectionTitle}>Verification Confidence</Text>
-          <Text style={styles.confidenceText}>Confidence: {Math.max(0, Math.min(100, confidence))}%</Text>
-          <AnimatedProgress value={confidenceAnim} barColor={statusMeta.accent} />
-          <Text style={styles.metaText}>{formatTimestamp(timestamp)}</Text>
-          <Text style={styles.metaText}>Attendance ID: {attendanceId}</Text>
-        </Card>
+      {status !== 'already_marked' && (
+        <Animated.View style={{ opacity: contentOpacity }}>
+          <Card style={styles.confidenceCard}>
+            <Text style={styles.sectionTitle}>Confidence Score</Text>
+            <View style={{ alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: '#0f172a', fontSize: 32, fontWeight: '700', letterSpacing: -1 }}>{Math.round(confidence)}%</Text>
+              <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '500', marginBottom: 6 }}>{confidence >= 95 ? 'Excellent match' : 'Poor match'}</Text>
+            </View>
+            <AnimatedProgress value={confidenceAnim} barColor={statusMeta.accent} />
+          </Card>
+        </Animated.View>
+      )}
 
-        <Card style={styles.detailsCard}>
-          <Text style={styles.sectionTitle}>Validation Details</Text>
-        </Card>
-
-        <View style={styles.validationList}>
-          <ValidationItem
-            title={flags.location ? 'Location Verified' : 'Location Failed'}
-            status={statusFromFlag(flags.location)}
-            subtitle={flags.location ? `Room: ${attendanceResult.room_name || 'Classroom'}` : 'Outside campus range'}
-            extraInfo={flags.location ? `Distance: ${attendanceResult.distance ?? 0}m (Allowed: 5000m)` : `Distance: ${attendanceResult.distance ?? 'N/A'}m (Allowed: 5000m)`}
-          />
-          <ValidationItem
-            title={flags.wifi ? 'WiFi Verified' : 'WiFi Failed'}
-            status={statusFromFlag(flags.wifi)}
-            subtitle={flags.wifi ? 'Campus WiFi matched' : 'WiFi network not matched'}
-            extraInfo={flags.wifi ? 'Network check passed' : 'Failure reason: WiFi network not matched'}
-          />
-          <ValidationItem
-            title={flags.media ? 'Media Verified' : 'Media Failed'}
-            status={statusFromFlag(flags.media)}
-            subtitle={flags.media ? 'Camera/media accepted' : 'Media verification rejected'}
-            extraInfo={flags.media ? 'Face/media validation passed' : 'Failure reason: Duplicate or unclear media'}
-          />
-          <ValidationItem
-            title={flags.device ? 'Device Verified' : 'Device Failed'}
-            status={statusFromFlag(flags.device)}
-            subtitle={flags.device ? 'Authorized device' : 'Unauthorized device detected'}
-            extraInfo={flags.device ? 'Device check passed' : 'Failure reason: Device ID mismatch'}
-          />
-        </View>
-      </Animated.View>
+      {status !== 'already_marked' && (
+        <Animated.View style={{ opacity: contentOpacity }}>
+          <Card style={styles.detailsCard}>
+            <Text style={[styles.sectionTitle, { marginLeft: 16, marginTop: 4 }]}>Validation Details</Text>
+          </Card>
+          <View style={styles.validationList}>
+            <ValidationItem
+              title={flags.location ? (attendanceResult.gps_warning ? '⚠ Location Verified (Low GPS Accuracy)' : '✓ Location Verified') : (attendanceResult.distance === -1 ? '✗ Location Error' : '✗ Outside Campus Range')}
+              status={flags.location ? (attendanceResult.gps_warning ? 'limited' : 'passed') : 'failed'}
+              subtitle={flags.location ? `Room: ${attendanceResult.room_name || 'Classroom'}` : (attendanceResult.distance === -1 ? 'Could not fetch GPS' : 'Distance limit exceeded')}
+              extraInfo={attendanceResult.distance === -1 
+                ? 'Device failed to capture GPS coordinates' 
+                : `Distance: ${attendanceResult.distance ?? 'N/A'}m (Allowed: 1000m)`}
+            />
+            <ValidationItem
+              title={flags.wifi ? 'WiFi Verified' : 'WiFi Failed'}
+              status={statusFromFlag(flags.wifi)}
+              subtitle={flags.wifi ? 'Campus WiFi matched' : 'WiFi network not matched'}
+              extraInfo={flags.wifi ? 'Network check passed' : 'Failure reason: WiFi network not matched'}
+            />
+            <ValidationItem
+              title={flags.media ? 'Media Verified' : 'Media Failed'}
+              status={statusFromFlag(flags.media)}
+              subtitle={flags.media ? 'Camera/media accepted' : 'Media verification rejected'}
+              extraInfo={flags.media ? 'Face/media validation passed' : 'Failure reason: Duplicate or unclear media'}
+            />
+            <ValidationItem
+              title={flags.device ? 'Device Verified' : 'Device Failed'}
+              status={statusFromFlag(flags.device)}
+              subtitle={flags.device ? 'Authorized device' : 'Unauthorized device detected'}
+              extraInfo={flags.device ? 'Device check passed' : 'Failure reason: Device ID mismatch'}
+            />
+          </View>
+        </Animated.View>
+      )}
 
       {status === 'suspicious' ? (
         <AppButton label="View Details" onPress={() => navigation.replace(ROUTES.ATTENDANCE)} />

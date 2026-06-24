@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useContext, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AppButton from '../components/AppButton';
 import AppHeader from '../components/AppHeader';
@@ -33,6 +33,20 @@ function HomeScreen({ navigation }) {
   const [isRefreshingStudents, setIsRefreshingStudents] = useState(false);
   const [roomName, setRoomName] = useState('Hall A');
 
+  const loadDashboard = async () => {
+    setIsLoadingDashboard(true);
+    try {
+      const data = await getDashboardData();
+      setDashboardData(data);
+      setDashboardError(null);
+    } catch (err) {
+      setDashboardData(null);
+      setDashboardError(err.message);
+    } finally {
+      setIsLoadingDashboard(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     async function checkRole() {
@@ -40,25 +54,6 @@ function HomeScreen({ navigation }) {
       if (isMounted) setUserRole(role || 'student');
     }
     checkRole();
-
-    async function loadDashboard() {
-      setIsLoadingDashboard(true);
-      try {
-        const data = await getDashboardData();
-        if (isMounted) {
-          setDashboardData(data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setDashboardData(null);
-          setDashboardError(err.message);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingDashboard(false);
-        }
-      }
-    }
 
     async function loadFacultyData() {
       const role = await AsyncStorage.getItem('role');
@@ -127,22 +122,22 @@ function HomeScreen({ navigation }) {
     try {
       // Capture faculty's current location to set the classroom anchor
       const gps = await captureGPS();
-      
+
       const token = await AsyncStorage.getItem('token');
       const response = await fetch(`${BASE_URL}/session/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          subject: "Demo Class",
-          end_time: "2026-12-31T23:59:59",
+          subject: 'Demo Class',
+          end_time: '2026-12-31T23:59:59',
           classroom_lat: gps.latitude || 0.0,
           classroom_lon: gps.longitude || 0.0,
           room_name: roomName,
-          wifi_ssid: "D-Link_DIR-615 3"
-        })
+          wifi_ssid: 'D-Link_DIR-615 3',
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Failed to start session');
@@ -161,7 +156,7 @@ function HomeScreen({ navigation }) {
       const token = await AsyncStorage.getItem('token');
       const response = await fetch(`${BASE_URL}/session/qr/${facultySessionId}`, {
         method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
         const data = await response.json();
@@ -202,12 +197,14 @@ function HomeScreen({ navigation }) {
 
   return (
     <ScreenLayout>
-      <AppHeader title="Verimark" subtitle="Student dashboard" />
+      <AppHeader title="Verimark" subtitle="Faculty Dashboard" />
 
       {inAppToast ? (
         <Pressable style={styles.toastBanner} onPress={dismissInAppToast}>
           <Text style={styles.toastTitle}>{inAppToast.title}</Text>
-          <Text numberOfLines={1} style={styles.toastMessage}>{inAppToast.message}</Text>
+          <Text numberOfLines={1} style={styles.toastMessage}>
+            {inAppToast.message}
+          </Text>
         </Pressable>
       ) : null}
 
@@ -226,13 +223,19 @@ function HomeScreen({ navigation }) {
         ) : !dashboardData ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyIcon}>📊</Text>
-            <Text style={styles.emptyText}>{dashboardError ? `Error: ${dashboardError}` : 'No attendance data yet'}</Text>
-            <AppButton 
-              label="Retry" 
-              onPress={() => loadDashboard()} 
-              style={{ marginTop: 20, width: 200 }} 
+            <Text style={styles.emptyText}>
+              {dashboardError ? `Error: ${dashboardError}` : 'No attendance data yet'}
+            </Text>
+            <AppButton
+              label="Retry"
+              onPress={() => loadDashboard()}
+              style={{ marginTop: 20, width: 200 }}
             />
-            <Pressable onPress={handleLogout} disabled={isLoggingOut} style={[styles.logoutWrap, { marginTop: 10 }]}>
+            <Pressable
+              onPress={handleLogout}
+              disabled={isLoggingOut}
+              style={[styles.logoutWrap, { marginTop: 10 }]}
+            >
               <Text style={styles.logoutText}>{isLoggingOut ? 'Logging out...' : 'Logout'}</Text>
             </Pressable>
           </View>
@@ -241,22 +244,35 @@ function HomeScreen({ navigation }) {
             <Card style={styles.heroCard}>
               <View style={styles.heroRow}>
                 <View style={styles.heroCopy}>
-                  <Text style={styles.heroGreeting}>{greeting}, {dashboardData.name.split(' ')[0]}</Text>
+                  <Text style={styles.heroGreeting}>
+                    {greeting}, {dashboardData.name.split(' ')[0]}
+                  </Text>
                   <Text style={styles.heroName}>{dashboardData.name}</Text>
                   {userRole !== 'faculty' && (
-                    <Text style={styles.heroSubtitle}>Last marked: {dashboardData.lastMarkedLabel}</Text>
+                    <Text style={styles.heroSubtitle}>
+                      Last marked: {dashboardData.lastMarkedLabel}
+                    </Text>
                   )}
                 </View>
-                <Pressable style={styles.alertBell} onPress={() => navigation.navigate(ROUTES.ALERTS)}>
+                <Pressable
+                  style={styles.alertBell}
+                  onPress={() => navigation.navigate(ROUTES.ALERTS)}
+                >
                   <Text style={styles.alertBellIcon}>🔔</Text>
                   {unreadCount > 0 ? (
                     <View style={styles.alertBadge}>
-                      <Text style={styles.alertBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                      <Text style={styles.alertBadgeText}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </Text>
                     </View>
                   ) : null}
                 </Pressable>
                 <View style={styles.profileBadge}>
-                  <Text style={styles.profileInitial}>{dashboardData.name.charAt(0)}</Text>
+                  {dashboardData.profile_photo_url ? (
+                    <Image source={{ uri: `${BASE_URL.replace('/api/v1', '')}${dashboardData.profile_photo_url.startsWith('/') ? '' : '/'}${dashboardData.profile_photo_url}` }} style={{ width: '100%', height: '100%', borderRadius: 999 }} />
+                  ) : (
+                    <Text style={styles.profileInitial}>{dashboardData.name.charAt(0)}</Text>
+                  )}
                 </View>
               </View>
             </Card>
@@ -264,21 +280,32 @@ function HomeScreen({ navigation }) {
             {userRole === 'faculty' ? (
               <>
                 <Card style={{ marginTop: 12, alignItems: 'center', gap: 16 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      alignItems: 'center',
+                    }}
+                  >
                     <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Faculty Controls</Text>
                   </View>
                   {!facultySessionId ? (
                     <View style={{ width: '100%', gap: 10 }}>
                       <View style={{ gap: 4 }}>
-                        <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>CLASSROOM / ROOM NAME</Text>
-                        <View style={{ 
-                          backgroundColor: '#f1f5f9', 
-                          borderRadius: 8, 
-                          padding: 12,
-                          borderWidth: 1,
-                          borderColor: '#e2e8f0'
-                        }}>
-                          <TextInput 
+                        <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
+                          CLASSROOM / ROOM NAME
+                        </Text>
+                        <View
+                          style={{
+                            backgroundColor: '#f1f5f9',
+                            borderRadius: 8,
+                            padding: 12,
+                            borderWidth: 1,
+                            borderColor: '#e2e8f0',
+                          }}
+                        >
+                          <TextInput
                             value={roomName}
                             onChangeText={setRoomName}
                             placeholder="e.g. Lab 2, Hall A"
@@ -286,30 +313,44 @@ function HomeScreen({ navigation }) {
                           />
                         </View>
                       </View>
-                      <AppButton 
-                        label={isStartingSession ? "Starting..." : "Start New Session"} 
-                        onPress={handleStartSession} 
+                      <AppButton
+                        label={isStartingSession ? 'Starting...' : 'Start New Session'}
+                        onPress={handleStartSession}
                         loading={isStartingSession}
                         style={{ width: '100%' }}
                       />
                     </View>
                   ) : (
                     <View style={{ alignItems: 'center', width: '100%', gap: 12 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '600' }}>Scan to Mark Attendance</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '600' }}>
+                        Scan to Mark Attendance
+                      </Text>
                       <View style={{ padding: 16, backgroundColor: 'white', borderRadius: 12 }}>
                         <QRCode value={facultyQrToken} size={250} />
                       </View>
-                      <Text style={{ fontSize: 18, color: '#eab308', fontWeight: 'bold' }}>Refreshes in: {countdown}s</Text>
-                      <Text style={{ fontSize: 12, color: '#64748b' }}>Raw Token for manual entry:</Text>
-                      <Text style={{ fontSize: 10, color: '#000' }} selectable>{facultyQrToken}</Text>
+                      <Text style={{ fontSize: 18, color: '#eab308', fontWeight: 'bold' }}>
+                        Refreshes in: {countdown}s
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>
+                        Raw Token for manual entry:
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#000' }} selectable>
+                        {facultyQrToken}
+                      </Text>
                     </View>
                   )}
                 </Card>
 
                 <Card style={{ marginTop: 12, gap: 12 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
                     <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Students Registered</Text>
-                    <Pressable 
+                    <Pressable
                       onPress={async () => {
                         setIsRefreshingStudents(true);
                         try {
@@ -326,30 +367,46 @@ function HomeScreen({ navigation }) {
                       </Text>
                     </Pressable>
                   </View>
-                  
+
                   {facultyStudents.length === 0 ? (
-                    <Text style={{ color: '#64748b', textAlign: 'center', paddingVertical: 10 }}>No students registered to you yet.</Text>
+                    <Text style={{ color: '#64748b', textAlign: 'center', paddingVertical: 10 }}>
+                      No students registered to you yet.
+                    </Text>
                   ) : (
                     facultyStudents.map((stu) => (
-                      <View key={stu.student_id} style={{ 
-                        flexDirection: 'row', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        paddingVertical: 8,
-                        borderBottomWidth: 1,
-                        borderBottomColor: '#f1f5f9'
-                      }}>
+                      <View
+                        key={stu.student_id}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          paddingVertical: 8,
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#f1f5f9',
+                        }}
+                      >
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontWeight: '600', fontSize: 14 }}>{stu.name}</Text>
                           <Text style={{ fontSize: 12, color: '#64748b' }}>
-                            Last: {stu.latest_status ? (stu.latest_status === 'valid' ? '✅ Present' : stu.latest_status === 'suspicious' ? '⚠️ Suspicious' : '❌ Rejected') : 'None'}
+                            Last:{' '}
+                            {stu.latest_status
+                              ? stu.latest_status === 'valid'
+                                ? '✅ Present'
+                                : stu.latest_status === 'suspicious'
+                                  ? '⚠️ Suspicious'
+                                  : '❌ Rejected'
+                              : 'None'}
                           </Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.primary }}>
-                            {stu.total_records > 0 ? `${Math.round((stu.total_present / stu.total_records) * 100)}%` : '0%'}
+                            {stu.total_records > 0
+                              ? `${Math.round((stu.total_present / stu.total_records) * 100)}%`
+                              : '0%'}
                           </Text>
-                          <Text style={{ fontSize: 10, color: '#64748b' }}>{stu.total_present}/{stu.total_records} classes</Text>
+                          <Text style={{ fontSize: 10, color: '#64748b' }}>
+                            {stu.total_present}/{stu.total_records} classes
+                          </Text>
                         </View>
                       </View>
                     ))
@@ -359,17 +416,26 @@ function HomeScreen({ navigation }) {
             ) : null}
 
             <View style={styles.quickStatsRow}>
-              <LinearGradient colors={['#ecfdf3', '#ffffff']} style={[styles.quickStatCard, styles.presentTint]}>
+              <LinearGradient
+                colors={['#ecfdf3', '#ffffff']}
+                style={[styles.quickStatCard, styles.presentTint]}
+              >
                 <Text style={styles.statIcon}>✅</Text>
                 <Text style={styles.quickStatValue}>{dashboardData.present}</Text>
                 <Text style={styles.quickStatLabel}>Present</Text>
               </LinearGradient>
-              <LinearGradient colors={['#fef2f2', '#ffffff']} style={[styles.quickStatCard, styles.absentTint]}>
+              <LinearGradient
+                colors={['#fef2f2', '#ffffff']}
+                style={[styles.quickStatCard, styles.absentTint]}
+              >
                 <Text style={styles.statIcon}>❌</Text>
                 <Text style={styles.quickStatValue}>{dashboardData.rejected}</Text>
                 <Text style={styles.quickStatLabel}>Absent</Text>
               </LinearGradient>
-              <LinearGradient colors={['#eff6ff', '#ffffff']} style={[styles.quickStatCard, styles.totalTint]}>
+              <LinearGradient
+                colors={['#eff6ff', '#ffffff']}
+                style={[styles.quickStatCard, styles.totalTint]}
+              >
                 <Text style={styles.statIcon}>📚</Text>
                 <Text style={styles.quickStatValue}>{dashboardData.total_classes}</Text>
                 <Text style={styles.quickStatLabel}>Total</Text>
@@ -380,11 +446,17 @@ function HomeScreen({ navigation }) {
               <Text style={styles.sectionKicker}>Overall attendance</Text>
               <View style={styles.attendanceRow}>
                 <Text style={[styles.attendanceValue, { color: attendanceColor }]}>
-                  {dashboardData.total_classes > 0 ? `${dashboardData.attendance_percentage}%` : 'N/A'}
+                  {dashboardData.total_classes > 0
+                    ? `${dashboardData.attendance_percentage}%`
+                    : 'N/A'}
                 </Text>
-                <Text style={styles.attendanceHint}>{dashboardData.present}/{dashboardData.total_classes} classes</Text>
+                <Text style={styles.attendanceHint}>
+                  {dashboardData.present}/{dashboardData.total_classes} classes
+                </Text>
               </View>
-              {dashboardData.total_classes > 0 && <ProgressBar value={dashboardData.attendance_percentage} />}
+              {dashboardData.total_classes > 0 && (
+                <ProgressBar value={dashboardData.attendance_percentage} />
+              )}
               <Text style={styles.minRequired}>Minimum required: 75%</Text>
             </Card>
 

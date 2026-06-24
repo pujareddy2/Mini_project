@@ -15,6 +15,13 @@ import { SPACING } from '../theme';
 function ProcessingScreen({ navigation, route }) {
   const [screenState, setScreenState] = useState('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const [progress, setProgress] = useState({
+    qr: 'pending',
+    gps: 'pending',
+    wifi: 'pending',
+    media: 'pending',
+    submit: 'pending'
+  });
 
   const { qrToken } = route.params || {};
 
@@ -33,32 +40,25 @@ function ProcessingScreen({ navigation, route }) {
           return;
         }
 
-        // Use photo if available, otherwise skip (camera was cancelled or unavailable)
-        let finalPhotoUri = photoUri || null;
-
         const studentId = await AsyncStorage.getItem('user_id');
         const deviceId = await AsyncStorage.getItem('device_id');
-
-        // QR verification — fall back to sessionId from params if verify fails
+        
         let sessionId = paramSessionId;
-        try {
-          const qrResult = await verifyQR(token);
-          sessionId = paramSessionId || qrResult.session_id;
-        } catch (qrError) {
-          console.log('QR verify failed, using sessionId from params:', paramSessionId);
-          if (!sessionId) {
-            throw new Error('QR verification failed and no session ID available.');
-          }
-        }
 
-        const gps = await captureGPS();
-        const wifi = await captureWiFi();
+        // Execute validations in parallel
+        const [qrRes, gps, wifi, mediaUrl] = await Promise.all([
+          verifyQR(token).then(res => { setProgress(p => ({ ...p, qr: 'done' })); return res; }).catch(e => {
+            console.log('QR verify failed:', e);
+            if (!sessionId) throw new Error('QR verification failed and no session ID available.');
+            setProgress(p => ({ ...p, qr: 'done' }));
+            return null;
+          }),
+          captureGPS().then(res => { setProgress(p => ({ ...p, gps: 'done' })); return res; }),
+          captureWiFi().then(res => { setProgress(p => ({ ...p, wifi: 'done' })); return res; }),
+          (photoUri ? uploadMedia(photoUri, mediaType) : Promise.resolve('no_photo')).then(res => { setProgress(p => ({ ...p, media: 'done' })); return res; })
+        ]);
 
-        // Upload media only if photo exists
-        let mediaUrl = 'no_photo';
-        if (finalPhotoUri) {
-          mediaUrl = await uploadMedia(finalPhotoUri, mediaType);
-        }
+        if (qrRes && qrRes.session_id) sessionId = qrRes.session_id;
 
         const result = await submitAttendance({
           session_id: sessionId,
@@ -66,11 +66,13 @@ function ProcessingScreen({ navigation, route }) {
           device_id: deviceId || 'web_browser_device',
           gps_lat: gps.latitude || 0.0,
           gps_lon: gps.longitude || 0.0,
+          gps_accuracy: gps.accuracy || 100.0,
           wifi_ssid: wifi.ssid || 'unavailable',
           bssid: wifi.bssid || '',
           media_url: mediaUrl
         });
 
+        setProgress(p => ({ ...p, submit: 'done' }));
         navigation.replace(ROUTES.RESULT, { attendanceResult: result });
 
       } catch (error) {
@@ -85,24 +87,11 @@ function ProcessingScreen({ navigation, route }) {
     runAttendanceFlow();
   }, []);
 
-  if (screenState === 'invalid') {
+  if (screenState === 'invalid' || screenState === 'error') {
     return (
       <ScreenLayout contentStyle={styles.contentStyle} centered>
         <Card style={styles.fallbackCard}>
-          <Text style={styles.fallbackTitle}>Invalid session. Please scan again</Text>
-          <Text style={styles.fallbackText}>The QR data was missing or could not be used safely.</Text>
-          <AppButton label="Go Back" variant="secondary" onPress={goBackToScan} />
-          <AppButton label="Scan Again" onPress={goBackToScan} />
-        </Card>
-      </ScreenLayout>
-    );
-  }
-
-  if (screenState === 'error') {
-    return (
-      <ScreenLayout contentStyle={styles.contentStyle} centered>
-        <Card style={styles.fallbackCard}>
-          <Text style={styles.fallbackTitle}>Something went wrong</Text>
+          <Text style={styles.fallbackTitle}>{screenState === 'invalid' ? 'Invalid session' : 'Something went wrong'}</Text>
           <Text style={styles.fallbackText}>{errorMessage || 'Processing failed unexpectedly.'}</Text>
           <AppButton label="Go Back" variant="secondary" onPress={goBackToScan} />
         </Card>
@@ -111,25 +100,34 @@ function ProcessingScreen({ navigation, route }) {
   }
 
   return (
-    <ScreenLayout contentStyle={styles.contentStyle} centered>
-      <AppHeader title="Verimark" subtitle="Attendance verification" />
-
-      <Card style={styles.loadingCard}>
-        <View style={styles.spinnerWrap}>
-          <ActivityIndicator size="large" color="#3b82f6" />
-        </View>
-        {Platform.OS === 'web' ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Web demo mode</Text>
+    <ScreenLayout>
+      <AppHeader title="Validating" onBack={goBackToScan} />
+      <View style={styles.contentStyle}>
+        <Card style={styles.loadingCard}>
+          <View style={styles.spinnerWrap}>
+            <ActivityIndicator size="large" color="#3b82f6" />
           </View>
-        ) : null}
-        <Text style={styles.title}>Processing attendance...</Text>
-        <Text style={styles.subtitle}>Validating your QR input and preparing the next screen.</Text>
-      </Card>
-
-      <View style={styles.helperStack}>
-        <Text style={styles.helperText}>QR token received</Text>
-        <Text style={styles.helperTextMuted}>{qrToken || 'Missing QR token'}</Text>
+          <Text style={styles.title}>Verifying attendance...</Text>
+          <Text style={styles.subtitle}>Validating your QR input and calculating location distance.</Text>
+          
+          <View style={{ width: '100%', marginTop: 20 }}>
+            <Text style={{ fontSize: 16, color: progress.qr === 'done' ? '#10b981' : '#64748b' }}>
+              {progress.qr === 'done' ? '✓' : '...'} QR Validation
+            </Text>
+            <Text style={{ fontSize: 16, color: progress.gps === 'done' ? '#10b981' : '#64748b', marginTop: 8 }}>
+              {progress.gps === 'done' ? '✓' : '...'} GPS Validation
+            </Text>
+            <Text style={{ fontSize: 16, color: progress.wifi === 'done' ? '#10b981' : '#64748b', marginTop: 8 }}>
+              {progress.wifi === 'done' ? '✓' : '...'} WiFi Validation
+            </Text>
+            <Text style={{ fontSize: 16, color: progress.media === 'done' ? '#10b981' : '#64748b', marginTop: 8 }}>
+              {progress.media === 'done' ? '✓' : '...'} Camera & Liveness Verification
+            </Text>
+            <Text style={{ fontSize: 16, color: progress.submit === 'done' ? '#10b981' : '#64748b', marginTop: 8 }}>
+              {progress.submit === 'done' ? '✓' : '...'} Final Attendance Submission
+            </Text>
+          </View>
+        </Card>
       </View>
     </ScreenLayout>
   );

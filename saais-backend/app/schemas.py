@@ -9,6 +9,7 @@ class UserRegister(BaseModel):
 	email: str
 	password: str
 	role: str = "student"
+	profile_photo_url: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -54,6 +55,9 @@ class SessionValidateResponse(BaseModel):
 	room_name: Optional[str] = "Classroom"
 	wifi_ssid: Optional[str] = None
 	end_time: datetime
+	already_marked: bool = False
+	marked_at: Optional[datetime] = None
+	attendance_status: Optional[str] = None
 
 	model_config = ConfigDict(from_attributes=True)
 
@@ -62,6 +66,7 @@ class AttendanceSubmit(BaseModel):
 	session_id: int
 	gps_lat: float
 	gps_lon: float
+	gps_accuracy: Optional[float] = None
 	wifi_ssid: Optional[str] = None
 	device_id: str
 	qr_token: Optional[str] = None
@@ -74,6 +79,8 @@ class AttendanceResponse(BaseModel):
 	status: str
 	confidence_score: float
 	marked_at: datetime
+	distance: Optional[float] = None
+	gps_warning: Optional[bool] = False
 	flags: dict
 	attendanceId: str
 	message: str
@@ -82,3 +89,18 @@ class AttendanceResponse(BaseModel):
 
 	model_config = ConfigDict(from_attributes=True)
  
+
+class TimetableBase(BaseModel):
+	day_of_week: str
+	start_time: str
+	subject: str
+	class_name: str
+
+class TimetableCreate(TimetableBase):
+	pass
+
+class TimetableResponse(TimetableBase):
+	id: int
+	created_at: datetime
+
+	model_config = ConfigDict(from_attributes=True)

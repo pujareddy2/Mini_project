@@ -37,7 +37,7 @@ app = FastAPI(
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["*"],
-	allow_credentials=True,
+	allow_credentials=False,
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
@@ -56,10 +56,21 @@ app.include_router(attendance.router)
 app.include_router(analytics.router)
 app.include_router(media.router)
 app.include_router(faculty.router)
+from app.routers import timetable
+app.include_router(timetable.router)
 
+import os
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
+from fastapi.staticfiles import StaticFiles
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/faculty")
 def faculty_dashboard():
+	return FileResponse("faculty_dashboard.html")
+
+@app.get("/faculty_dashboard.html")
+def faculty_dashboard_html():
 	return FileResponse("faculty_dashboard.html")
 
 

@@ -17,20 +17,50 @@ failed_attempts = {}
 lockout_until = {}
 
 
+import os
+import uuid
+from fastapi import Form, UploadFile, File
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 @router.post("/register")
-def register_user(payload: schemas.UserRegister, db: Session = Depends(get_db)):
-	existing_user = db.query(models.User).filter(models.User.email == payload.email).first()
+async def register_user(
+	name: str = Form(...),
+	email: str = Form(...),
+	password: str = Form(...),
+	role: str = Form("student"),
+	profile_photo: UploadFile = File(...),
+	db: Session = Depends(get_db)
+):
+	existing_user = db.query(models.User).filter(models.User.email == email).first()
 	if existing_user:
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail="Email already registered",
 		)
 
+	if not profile_photo or not getattr(profile_photo, "filename", None):
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail="Profile photo is required",
+		)
+
+	filename_lower = profile_photo.filename.lower()
+	ext = filename_lower.split(".")[-1] if "." in filename_lower else "jpg"
+	filename = f"profile_{uuid.uuid4()}.{ext}"
+	filepath = os.path.join(UPLOAD_DIR, filename)
+	contents = await profile_photo.read()
+	with open(filepath, "wb") as f:
+		f.write(contents)
+	profile_photo_url = f"/{UPLOAD_DIR}/{filename}"
+
 	user = models.User(
-		name=payload.name,
-		email=payload.email,
-		password_hash=hash_password(payload.password),
-		role=payload.role,
+		name=name,
+		email=email,
+		password_hash=hash_password(password),
+		role=role,
+		profile_photo_url=profile_photo_url,
 	)
 	db.add(user)
 	db.commit()

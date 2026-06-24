@@ -135,7 +135,34 @@ def validate_qr(
 			detail="Session expired or inactive",
 		)
 
-	return session
+	response_data = {
+		"id": session.id,
+		"subject": session.subject,
+		"classroom_lat": session.classroom_lat,
+		"classroom_lon": session.classroom_lon,
+		"room_name": session.room_name,
+		"wifi_ssid": session.wifi_ssid,
+		"end_time": session.end_time,
+		"already_marked": False,
+		"marked_at": None,
+		"attendance_status": None,
+	}
+
+	existing_attendance = (
+		db.query(models.AttendanceRecord)
+		.filter(
+			models.AttendanceRecord.session_id == session.id,
+			models.AttendanceRecord.student_id == current_user.id
+		)
+		.first()
+	)
+
+	if existing_attendance:
+		response_data["already_marked"] = True
+		response_data["marked_at"] = existing_attendance.marked_at
+		response_data["attendance_status"] = existing_attendance.status
+
+	return response_data
 
 
 @router.get("/qr/{session_id}")
