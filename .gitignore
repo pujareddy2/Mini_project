@@ -52,3 +52,7 @@ venv/
 
 # backend uploads
 saais-backend/uploads/
+
+# PDF files
+*.pdf
+

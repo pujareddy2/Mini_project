@@ -119,6 +119,19 @@ function ScanScreen({ navigation }) {
         return;
       }
 
+      if (response.already_marked) {
+        setScanState('scanning');
+        navigation.replace(ROUTES.RESULT, {
+          attendanceResult: {
+            status: 'already_marked',
+            marked_at: response.marked_at,
+            subject: response.subject,
+            original_status: response.attendance_status
+          }
+        });
+        return;
+      }
+
       if (Platform.OS !== 'web') {
         Vibration.vibrate(80);
       }

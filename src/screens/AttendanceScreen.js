@@ -204,7 +204,7 @@ function AttendanceScreen({ navigation, route }) {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '600', fontSize: 15 }}>{stu.name}</Text>
                   <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                    Latest: {stu.latest_status ? (stu.latest_status === 'valid' ? '✅ Present' : '❌ Rejected') : 'None'}
+                    Latest: {stu.latest_status ? (stu.latest_status === 'valid' ? '✅ Present' : stu.latest_status === 'suspicious' ? '⚠️ Suspicious' : '❌ Rejected') : 'None'}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>

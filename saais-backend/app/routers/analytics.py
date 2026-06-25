@@ -41,7 +41,8 @@ def get_student_dashboard(
             "rejected": rejected,
             "attendance_percentage": percentage,
             "below_75": percentage < 75,
-            "role": "faculty"
+            "role": "faculty",
+            "profile_photo_url": user.profile_photo_url
         }
 
     # Student logic (existing)
@@ -74,7 +75,8 @@ def get_student_dashboard(
         "rejected": rejected,
         "attendance_percentage": percentage,
         "below_75": percentage < 75,
-        "role": "student"
+        "role": "student",
+        "profile_photo_url": user.profile_photo_url
     }
 
 @router.get("/alerts/student/{student_id}")
@@ -83,32 +85,59 @@ def get_student_alerts(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    records = (
-        db.query(models.AttendanceRecord)
-        .filter(
-            models.AttendanceRecord.student_id == student_id,
-            models.AttendanceRecord.status != "valid",
-        )
+    alerts = (
+        db.query(models.Alert)
+        .filter(models.Alert.user_id == student_id, models.Alert.is_read == False)
         .all()
     )
-    alerts = []
-    for r in records:
-        alerts.append({
-            "id": r.id,
-            "type": "warning" if r.status == "suspicious" else "error",
-            "title": "Suspicious Attendance" if r.status == "suspicious" else "Attendance Rejected",
-            "message": f"Your attendance was marked {r.status} with confidence score {r.confidence_score}",
-            "timestamp": r.marked_at.isoformat(),
-            "read": False,
-        })
-    return alerts
+    return [
+        {
+            "id": a.id,
+            "type": "warning" if a.alert_type == "low_attendance" else a.alert_type,
+            "title": "Low Attendance" if a.alert_type == "low_attendance" else "Notification",
+            "message": a.message,
+            "timestamp": a.created_at.isoformat(),
+            "read": a.is_read,
+        }
+        for a in alerts
+    ]
 
 @router.post("/alerts/read")
 def mark_alert_read(
     payload: dict,
+    db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    alert_id = payload.get("id")
+    if alert_id:
+        alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
+        if alert:
+            alert.is_read = True
+            db.commit()
     return {"ok": True, "message": "Alert marked as read"}
+
+@router.get("/alerts/faculty/{faculty_id}")
+def get_faculty_alerts(
+    faculty_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    alerts = (
+        db.query(models.Alert)
+        .filter(models.Alert.user_id == faculty_id, models.Alert.is_read == False)
+        .all()
+    )
+    return [
+        {
+            "id": a.id,
+            "type": "warning" if a.alert_type == "device_change" else "error" if a.alert_type in ("suspicious_attendance", "risk_score_increase") else a.alert_type,
+            "title": "Multiple Device Changes" if a.alert_type == "device_change" else "Risk Score Increased" if a.alert_type == "risk_score_increase" else "Suspicious Attendance" if a.alert_type == "suspicious_attendance" else "Security Alert",
+            "message": a.message,
+            "timestamp": a.created_at.isoformat(),
+            "read": a.is_read,
+        }
+        for a in alerts
+    ]
 
 @router.get("/dashboard/faculty/{faculty_id}")
 def get_faculty_dashboard(

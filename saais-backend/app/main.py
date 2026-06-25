@@ -1,7 +1,7 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.database import Base, engine
 from app.routers import analytics, attendance, login, media, session, faculty
@@ -37,11 +37,18 @@ app = FastAPI(
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["*"],
-	allow_credentials=True,
+	allow_credentials=False,
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+	return JSONResponse(
+		status_code=500,
+		content={"detail": str(exc)},
+	)
 
 @app.on_event("startup")
 def on_startup():
@@ -56,10 +63,21 @@ app.include_router(attendance.router)
 app.include_router(analytics.router)
 app.include_router(media.router)
 app.include_router(faculty.router)
+from app.routers import timetable
+app.include_router(timetable.router)
 
+import os
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
+from fastapi.staticfiles import StaticFiles
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/faculty")
 def faculty_dashboard():
+	return FileResponse("faculty_dashboard.html")
+
+@app.get("/faculty_dashboard.html")
+def faculty_dashboard_html():
 	return FileResponse("faculty_dashboard.html")
 
 

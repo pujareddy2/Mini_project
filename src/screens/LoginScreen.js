@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, TextInput, View, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,6 +8,8 @@ import AppButton from '../components/AppButton';
 import AppHeader from '../components/AppHeader';
 import ROUTES from '../navigation/routes';
 import { loginUser, registerStudent } from '../services/authService';
+import { captureGPS } from '../services/validationService';
+import { captureWiFi } from '../services/networkService';
 import ScreenLayout from '../components/ScreenLayout';
 import { SPACING } from '../theme';
 import getDeviceInfo from '../utils/deviceInfo';
@@ -44,6 +46,7 @@ function LoginScreen({ navigation }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [course, setCourse] = useState(COURSE_OPTIONS[0]);
   const [branch, setBranch] = useState(BRANCH_OPTIONS[COURSE_OPTIONS[0]][0]);
+  const [registerRole, setRegisterRole] = useState('student');
   const [profilePhotoUri, setProfilePhotoUri] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -75,7 +78,7 @@ function LoginScreen({ navigation }) {
 
     try {
       const deviceInfo = await getDeviceInfo();
-      const response = await loginUser(email, password, deviceInfo);
+      const response = await loginUser(email.trim(), password.trim(), deviceInfo);
 
       await AsyncStorage.multiSet([
         [STORAGE_KEYS.AUTH_TOKEN, response.token],
@@ -95,76 +98,140 @@ function LoginScreen({ navigation }) {
     try {
       setIsUploadingPhoto(true);
       if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          setErrorMessage('Profile photo access is required to upload an image.');
+        const permissionLib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const permissionCam = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permissionLib.granted || !permissionCam.granted) {
+          setErrorMessage('Profile photo access and camera permissions are required.');
+          setIsUploadingPhoto(false);
           return;
         }
-      }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
+        import('react-native').then(({ Alert }) => {
+          Alert.alert(
+            "Upload Photo",
+            "Choose an option",
+            [
+              { 
+                text: "Camera", 
+                onPress: async () => {
+                  try {
+                    const result = await ImagePicker.launchCameraAsync({
+                      allowsEditing: true,
+                      aspect: [1, 1],
+                      quality: 0.7,
+                    });
+                    if (!result.canceled && result.assets?.[0]?.uri) {
+                      setProfilePhotoUri(result.assets[0].uri);
+                    }
+                  } finally { setIsUploadingPhoto(false); }
+                }
+              },
+              { 
+                text: "Files", 
+                onPress: async () => {
+                  try {
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      allowsEditing: true,
+                      aspect: [1, 1],
+                      quality: 0.7,
+                    });
+                    if (!result.canceled && result.assets?.[0]?.uri) {
+                      setProfilePhotoUri(result.assets[0].uri);
+                    }
+                  } finally { setIsUploadingPhoto(false); }
+                }
+              },
+              { text: "Cancel", style: "cancel", onPress: () => setIsUploadingPhoto(false) }
+            ]
+          );
+        });
+      } else {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        });
 
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        setProfilePhotoUri(result.assets[0].uri);
+        if (!result.canceled && result.assets?.[0]?.uri) {
+          setProfilePhotoUri(result.assets[0].uri);
+        }
+        setIsUploadingPhoto(false);
       }
-    } catch {
-      setErrorMessage('Unable to access photo library on this device.');
-    } finally {
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to access photo library on this device.');
       setIsUploadingPhoto(false);
     }
   }
 
   async function handleRegister() {
+    const isFaculty = registerRole === 'faculty';
     const effectiveAdmissionType = showOtherAdmissionField ? otherAdmissionType.trim() : admissionType.trim();
 
-    if (
-      !name.trim()
-      || !email.trim()
-      || !rollNo.trim()
-      || !password.trim()
-      || !effectiveAdmissionType
-      || !formatDate(admissionDate).trim()
-      || !course.trim()
-      || !branch.trim()
-    ) {
-      setErrorMessage('Please complete all required registration fields.');
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      setErrorMessage('Please enter your name, email and password.');
       return;
     }
 
-    if (showAdmissionScore && !admissionScore.trim()) {
-      setErrorMessage('Admission score is required for EAMCET and JEE admissions.');
+    if (!isFaculty) {
+      if (!rollNo.trim() || !effectiveAdmissionType || !formatDate(admissionDate).trim() || !course.trim() || !branch.trim()) {
+        setErrorMessage('Please complete all required student registration fields.');
+        return;
+      }
+      if (showAdmissionScore && !admissionScore.trim()) {
+        setErrorMessage('Admission score is required for EAMCET and JEE admissions.');
+        return;
+      }
+    }
+
+    if (!profilePhotoUri) {
+      setErrorMessage('Profile photo is required for identity verification.');
       return;
     }
 
     try {
       setIsLoading(true);
-      const studentProfile = {
+
+      // Students: capture GPS + WiFi as their reference snapshot for attendance validation
+      // Faculty: only need device ID — GPS/WiFi are captured at session start time instead
+      const captureEnv = isFaculty
+        ? [getDeviceInfo(), Promise.resolve({ latitude: null, longitude: null }), Promise.resolve({ ssid: null, bssid: null })]
+        : [getDeviceInfo(), captureGPS().catch(() => ({ latitude: null, longitude: null })), captureWiFi().catch(() => ({ ssid: null, bssid: null }))];
+
+      if (!isFaculty) setErrorMessage('Capturing location and network for attendance setup...');
+      const [deviceInfo, gps, wifi] = await Promise.all(captureEnv);
+
+      const profile = {
         name: name.trim(),
         email: email.trim(),
-        rollNumber: rollNo.trim(),
         password: password.trim(),
-        admissionType: effectiveAdmissionType,
-        admissionScore: showAdmissionScore ? admissionScore.trim() : '',
-        admissionDate: formatDate(admissionDate),
-        course,
-        branch,
-        phone: phone.trim(),
+        role: registerRole,
+        ...(!isFaculty && {
+          rollNumber: rollNo.trim(),
+          admissionType: effectiveAdmissionType,
+          admissionScore: showAdmissionScore ? admissionScore.trim() : '',
+          admissionDate: formatDate(admissionDate),
+          course,
+          branch,
+          phone: phone.trim(),
+        }),
         profilePhotoUri,
+        deviceId: deviceInfo?.deviceId || null,
+        wifiSsid: wifi?.ssid || null,
+        wifiBssid: wifi?.bssid || null,
+        gpsLat: gps?.latitude ?? null,
+        gpsLon: gps?.longitude ?? null,
       };
 
-      await registerStudent(studentProfile);
-      await AsyncStorage.setItem(STORAGE_KEYS.REGISTERED_STUDENT, JSON.stringify(studentProfile));
-      
-      setErrorMessage('Registration successful! You can now log in.');
+      await registerStudent(profile);
+      if (!isFaculty) await AsyncStorage.setItem(STORAGE_KEYS.REGISTERED_STUDENT, JSON.stringify(profile));
+
+      setErrorMessage(`${isFaculty ? 'Faculty account' : 'Registration'} created successfully! You can now log in.`);
       setMode('login');
       setPassword('');
     } catch (error) {
-      setErrorMessage(error.message || 'Failed to register account.');
+      setErrorMessage(error.message || 'Failed to create account.');
     } finally {
       setIsLoading(false);
     }
@@ -241,6 +308,26 @@ function LoginScreen({ navigation }) {
         ) : (
           <Animated.View style={{ opacity: registerAnim, transform: [{ translateY: registerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
             <View style={styles.registerStack}>
+
+              {/* Role selector */}
+              <View style={styles.fieldBlock}>
+                <Text style={styles.label}>I am registering as</Text>
+                <View style={styles.roleRow}>
+                  <Pressable
+                    style={[styles.roleBtn, registerRole === 'student' && styles.roleBtnActive]}
+                    onPress={() => setRegisterRole('student')}
+                  >
+                    <Text style={[styles.roleBtnText, registerRole === 'student' && styles.roleBtnTextActive]}>Student</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.roleBtn, registerRole === 'faculty' && styles.roleBtnActive]}
+                    onPress={() => setRegisterRole('faculty')}
+                  >
+                    <Text style={[styles.roleBtnText, registerRole === 'faculty' && styles.roleBtnTextActive]}>Faculty</Text>
+                  </Pressable>
+                </View>
+              </View>
+
               <View style={styles.fieldBlock}>
                 <Text style={styles.label}>Name</Text>
                 <TextInput
@@ -270,19 +357,6 @@ function LoginScreen({ navigation }) {
               </View>
 
               <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Roll Number</Text>
-                <TextInput
-                  value={rollNo}
-                  onChangeText={setRollNo}
-                  placeholder="12345"
-                  style={fieldStyle('rollNo')}
-                  onFocus={() => setFocusedField('rollNo')}
-                  onBlur={() => setFocusedField('')}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-
-              <View style={styles.fieldBlock}>
                 <Text style={styles.label}>Password</Text>
                 <TextInput
                   value={password}
@@ -296,112 +370,130 @@ function LoginScreen({ navigation }) {
                 />
               </View>
 
-              <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Admission Type</Text>
-                <View style={styles.pickerWrap}>
-                  <Picker selectedValue={admissionType} onValueChange={(value) => setAdmissionType(value)}>
-                    {ADMISSION_TYPE_OPTIONS.map((option) => (
-                      <Picker.Item key={option} label={option} value={option} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
+              {/* Student-only fields */}
+              {registerRole === 'student' ? (
+                <>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.label}>Roll Number</Text>
+                    <TextInput
+                      value={rollNo}
+                      onChangeText={setRollNo}
+                      placeholder="12345"
+                      style={fieldStyle('rollNo')}
+                      onFocus={() => setFocusedField('rollNo')}
+                      onBlur={() => setFocusedField('')}
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
 
-              {showOtherAdmissionField ? (
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.label}>Other Admission Type</Text>
-                  <TextInput
-                    value={otherAdmissionType}
-                    onChangeText={setOtherAdmissionType}
-                    placeholder="Describe admission type"
-                    style={fieldStyle('otherAdmissionType')}
-                    onFocus={() => setFocusedField('otherAdmissionType')}
-                    onBlur={() => setFocusedField('')}
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.label}>Admission Type</Text>
+                    <View style={styles.pickerWrap}>
+                      <Picker selectedValue={admissionType} onValueChange={(value) => setAdmissionType(value)}>
+                        {ADMISSION_TYPE_OPTIONS.map((option) => (
+                          <Picker.Item key={option} label={option} value={option} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+
+                  {showOtherAdmissionField ? (
+                    <View style={styles.fieldBlock}>
+                      <Text style={styles.label}>Other Admission Type</Text>
+                      <TextInput
+                        value={otherAdmissionType}
+                        onChangeText={setOtherAdmissionType}
+                        placeholder="Describe admission type"
+                        style={fieldStyle('otherAdmissionType')}
+                        onFocus={() => setFocusedField('otherAdmissionType')}
+                        onBlur={() => setFocusedField('')}
+                        placeholderTextColor="#94a3b8"
+                      />
+                    </View>
+                  ) : null}
+
+                  {showAdmissionScore ? (
+                    <View style={styles.fieldBlock}>
+                      <Text style={styles.label}>Admission Score</Text>
+                      <TextInput
+                        value={admissionScore}
+                        onChangeText={setAdmissionScore}
+                        placeholder="Enter score"
+                        keyboardType="numeric"
+                        style={fieldStyle('admissionScore')}
+                        onFocus={() => setFocusedField('admissionScore')}
+                        onBlur={() => setFocusedField('')}
+                        placeholderTextColor="#94a3b8"
+                      />
+                    </View>
+                  ) : null}
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.label}>Admission Date</Text>
+                    <Pressable onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
+                      <Text style={styles.dateButtonText}>{formatDate(admissionDate) || 'Select admission date'}</Text>
+                    </Pressable>
+                    {showDatePicker ? (
+                      <DateTimePicker
+                        value={admissionDate}
+                        mode="date"
+                        display="default"
+                        onChange={(_, selectedDate) => {
+                          setShowDatePicker(false);
+                          if (selectedDate) setAdmissionDate(selectedDate);
+                        }}
+                      />
+                    ) : null}
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.label}>Course</Text>
+                    <View style={styles.pickerWrap}>
+                      <Picker
+                        selectedValue={course}
+                        onValueChange={(value) => {
+                          setCourse(value);
+                          setBranch((BRANCH_OPTIONS[value] || ['General'])[0]);
+                        }}
+                      >
+                        {COURSE_OPTIONS.map((option) => (
+                          <Picker.Item key={option} label={option} value={option} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.label}>Branch</Text>
+                    <View style={styles.pickerWrap}>
+                      <Picker selectedValue={branch} onValueChange={setBranch}>
+                        {branchOptions.map((option) => (
+                          <Picker.Item key={option} label={option} value={option} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.label}>Phone Number (optional)</Text>
+                    <TextInput
+                      value={phone}
+                      onChangeText={setPhone}
+                      placeholder="Enter phone number"
+                      keyboardType="phone-pad"
+                      style={fieldStyle('phone')}
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField('')}
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                </>
               ) : null}
 
-              {showAdmissionScore ? (
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.label}>Admission Score</Text>
-                  <TextInput
-                    value={admissionScore}
-                    onChangeText={setAdmissionScore}
-                    placeholder="Enter score"
-                    keyboardType="numeric"
-                    style={fieldStyle('admissionScore')}
-                    onFocus={() => setFocusedField('admissionScore')}
-                    onBlur={() => setFocusedField('')}
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
-              ) : null}
-
               <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Admission Date</Text>
-                <Pressable onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
-                  <Text style={styles.dateButtonText}>{formatDate(admissionDate) || 'Select admission date'}</Text>
-                </Pressable>
-                {showDatePicker ? (
-                  <DateTimePicker
-                    value={admissionDate}
-                    mode="date"
-                    display="default"
-                    onChange={(_, selectedDate) => {
-                      setShowDatePicker(false);
-                      if (selectedDate) {
-                        setAdmissionDate(selectedDate);
-                      }
-                    }}
-                  />
-                ) : null}
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Course</Text>
-                <View style={styles.pickerWrap}>
-                  <Picker
-                    selectedValue={course}
-                    onValueChange={(value) => {
-                      setCourse(value);
-                      setBranch((BRANCH_OPTIONS[value] || ['General'])[0]);
-                    }}
-                  >
-                    {COURSE_OPTIONS.map((option) => (
-                      <Picker.Item key={option} label={option} value={option} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Branch</Text>
-                <View style={styles.pickerWrap}>
-                  <Picker selectedValue={branch} onValueChange={setBranch}>
-                    {branchOptions.map((option) => (
-                      <Picker.Item key={option} label={option} value={option} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Phone Number (optional)</Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Enter phone number"
-                  keyboardType="phone-pad"
-                  style={fieldStyle('phone')}
-                  onFocus={() => setFocusedField('phone')}
-                  onBlur={() => setFocusedField('')}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Profile Photo (optional)</Text>
+                <Text style={styles.label}>
+                  Profile Photo (Required){registerRole === 'student' ? ' — used for face verification' : ''}
+                </Text>
                 <AppButton
                   label={isUploadingPhoto ? 'Uploading...' : 'Upload Profile Photo'}
                   onPress={handlePickPhoto}
@@ -413,7 +505,12 @@ function LoginScreen({ navigation }) {
                 ) : null}
               </View>
 
-              <AppButton label="Create Student Account" onPress={handleRegister} loading={isLoading} style={styles.mainButton} />
+              <AppButton
+                label={registerRole === 'faculty' ? 'Create Faculty Account' : 'Create Student Account'}
+                onPress={handleRegister}
+                loading={isLoading}
+                style={styles.mainButton}
+              />
             </View>
           </Animated.View>
         )}
@@ -480,6 +577,30 @@ const styles = StyleSheet.create({
   registerStack: {
     gap: 12,
     marginTop: 8,
+  },
+  roleRow: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    padding: 4,
+    gap: 4,
+  },
+  roleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  roleBtnActive: {
+    backgroundColor: '#3b82f6',
+  },
+  roleBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  roleBtnTextActive: {
+    color: '#ffffff',
   },
   fieldBlock: {
     alignSelf: 'stretch',

@@ -82,13 +82,6 @@ const ATTENDANCE_DATA = {
       { subject: 'Computer Networks', total: 7, present: 6, absent: 1 },
     ],
   },
-  timetable: [
-    { time: '09:00', subject: 'Cloud Computing', className: 'Section A' },
-    { time: '10:00', subject: 'Compiler Design', className: 'CS-1' },
-    { time: '11:15', subject: 'DBMS', className: 'Lab 2' },
-    { time: '12:15', subject: 'Lunch Break', className: '—' },
-    { time: '01:15', subject: 'Computer Networks', className: 'Section B' },
-  ],
   semester: {
     label: 'Semester IV',
     status: 'Active',
@@ -126,7 +119,7 @@ function getDashboardSummary() {
       'Your attendance is below 85%',
       'You missed DBMS class yesterday',
     ],
-    todayClasses: ATTENDANCE_DATA.timetable.slice(0, 2),
+    todayClasses: [], // We'll fetch this dynamically in the UI instead
   };
 }
 
@@ -166,8 +159,24 @@ function getConsolidatedPeriodWiseSummary() {
   return ATTENDANCE_DATA.periodWise.consolidated;
 }
 
-function getTimetableSummary() {
-  return ATTENDANCE_DATA.timetable;
+import { BASE_URL } from '../config';
+
+async function getTimetableSummary(dayOfWeek) {
+  try {
+    const response = await fetch(`${BASE_URL}/timetable/${dayOfWeek}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch timetable');
+    }
+    const data = await response.json();
+    return data.map(item => ({
+      time: item.start_time,
+      subject: item.subject,
+      className: item.class_name
+    }));
+  } catch (error) {
+    console.error('Error fetching timetable:', error);
+    return [];
+  }
 }
 
 function getSemesterSummary() {

@@ -1,13 +1,30 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import AppHeader from '../components/AppHeader';
 import Card from '../components/Card';
 import ScreenLayout from '../components/ScreenLayout';
 import { getTimetableSummary } from '../services/attendanceDataService';
-import { SPACING } from '../theme';
+import { COLORS, SPACING } from '../theme';
 
 function TimetableScreen({ navigation }) {
-  const timetable = getTimetableSummary();
+  const [timetable, setTimetable] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
   const currentHour = new Date().getHours();
+  
+  // Get current day name (e.g., 'Monday')
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const currentDay = days[new Date().getDay()];
+
+  useEffect(() => {
+    async function loadTimetable() {
+      setLoading(true);
+      const data = await getTimetableSummary(currentDay);
+      setTimetable(data);
+      setLoading(false);
+    }
+    loadTimetable();
+  }, [currentDay]);
 
   function isCurrentSlot(timeLabel) {
     const match = timeLabel.match(/^(\d{1,2})/);
@@ -20,25 +37,31 @@ function TimetableScreen({ navigation }) {
 
   return (
     <ScreenLayout contentStyle={styles.contentStyle}>
-      <AppHeader title="Timetable" subtitle="Daily class timeline" showBack onBackPress={() => navigation.goBack()} />
+      <AppHeader title="Timetable" subtitle={`${currentDay}'s Schedule`} showBack onBackPress={() => navigation.goBack()} />
 
       <Card style={styles.heroCard}>
-        <Text style={styles.heroTitle}>{"Today's schedule"}</Text>
+        <Text style={styles.heroTitle}>{`${currentDay}'s Schedule`}</Text>
         <Text style={styles.heroText}>Time, subject, and faculty at a glance.</Text>
       </Card>
 
       <View style={styles.timelineStack}>
-        {timetable.map((item) => (
-          <Card key={`${item.time}-${item.subject}`} style={[styles.timelineCard, isCurrentSlot(item.time) && styles.currentClassCard]}>
-            <View style={styles.timePill}>
-              <Text style={styles.timeText}>{item.time}</Text>
-            </View>
-            <View style={styles.timelineBody}>
-              <Text style={styles.subjectText}>{item.subject}</Text>
-              <Text style={styles.classText}>{item.className}</Text>
-            </View>
-          </Card>
-        ))}
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
+        ) : timetable.length === 0 ? (
+          <Text style={{ textAlign: 'center', marginTop: 20, color: '#64748b' }}>No classes scheduled for {currentDay}.</Text>
+        ) : (
+          timetable.map((item) => (
+            <Card key={`${item.time}-${item.subject}`} style={[styles.timelineCard, isCurrentSlot(item.time) && styles.currentClassCard]}>
+              <View style={styles.timePill}>
+                <Text style={styles.timeText}>{item.time}</Text>
+              </View>
+              <View style={styles.timelineBody}>
+                <Text style={styles.subjectText}>{item.subject}</Text>
+                <Text style={styles.classText}>{item.className}</Text>
+              </View>
+            </Card>
+          ))
+        )}
       </View>
     </ScreenLayout>
   );

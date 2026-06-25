@@ -44,7 +44,7 @@ function ErrorScreen({ navigation, route }) {
     description: 'Please retry attendance after checking permissions and connectivity.',
   };
 
-  const message = route.params?.message || result?.message || reasonInfo.title;
+  const message = route.params?.error || route.params?.message || result?.message || reasonInfo.title;
   const details = result?.details || { location: false, wifi: false, photo: false };
   const reasons = result?.reasons || ['outside location'];
   const wifiReason = validationResult?.wifi?.reason || result?.wifi?.reason;
@@ -167,12 +167,18 @@ function ErrorScreen({ navigation, route }) {
         </View>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Required Range</Text>
-          <Text style={styles.detailValue}>Within {result.allowed_range || 30} meters</Text>
+          <Text style={styles.detailValue}>{result.allowed_range != null ? `Within ${result.allowed_range} meters` : 'N/A'}</Text>
         </View>
-        <ProgressBar value={Math.min(100, Math.round(((result.allowed_range || 30) / (result.distance || 1)) * 100))} trackStyle={styles.errorTrack} barStyle={styles.errorBar} />
+        {result.distance != null && result.allowed_range != null ? (
+          <ProgressBar
+            value={Math.min(100, Math.round((result.distance / result.allowed_range) * 100))}
+            trackStyle={styles.errorTrack}
+            barStyle={styles.errorBar}
+          />
+        ) : null}
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Current Distance</Text>
-          <Text style={styles.distanceValue}>{result.distance || 'Unknown'} meters away</Text>
+          <Text style={styles.distanceValue}>{result.distance != null ? `${result.distance} meters away` : 'Unknown'}</Text>
         </View>
       </Card>
 

@@ -24,6 +24,7 @@ class User(Base):
 	password_hash = Column(String)
 	role = Column(String, default="student")
 	device_id = Column(String)
+	profile_photo_url = Column(String, nullable=True)
 	# Many-to-many: faculty ↔︎ students
 	faculty_of = relationship(
 		"User",
@@ -50,6 +51,7 @@ class Session(Base):
 	room_name = Column(String, default="Classroom")
 	wifi_ssid = Column(String)
 	is_active = Column(Boolean, default=True)
+	faculty_ip = Column(String, nullable=True)
 
 
 class AttendanceRecord(Base):
@@ -82,6 +84,58 @@ class DeviceBinding(Base):
 
 	id = Column(Integer, primary_key=True, index=True)
 	student_id = Column(Integer, ForeignKey("users.id"), unique=True)
-	device_id = Column(String)
+	device_id = Column(String, unique=True, index=True)  # enforces 1 student per device
 	bound_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StudentReference(Base):
+	__tablename__ = "student_references"
+
+	id = Column(Integer, primary_key=True, index=True)
+	student_id = Column(Integer, ForeignKey("users.id"), unique=True)
+	wifi_ssid = Column(String, nullable=True)
+	wifi_bssid = Column(String, nullable=True)
+	latitude = Column(Float, nullable=True)
+	longitude = Column(Float, nullable=True)
+	geofence_radius = Column(Float, default=55000.0)
+	faculty_wifi_ssid = Column(String, nullable=True)
+	student_wifi_ssid = Column(String, nullable=True)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Alert(Base):
+	__tablename__ = "alerts"
+
+	id = Column(Integer, primary_key=True, index=True)
+	user_id = Column(Integer, ForeignKey("users.id"))
+	alert_type = Column(String)  # "low_attendance", "suspicious_attendance", "device_change"
+	message = Column(String)
+	is_read = Column(Boolean, default=False)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MediaRecord(Base):
+	__tablename__ = "media_records"
+
+	id = Column(Integer, primary_key=True, index=True)
+	student_id = Column(Integer, ForeignKey("users.id"))
+	filepath = Column(String)
+	media_url = Column(String, unique=True, index=True)
+	file_type = Column(String)  # "image" or "video"
+	file_size = Column(Integer)
+	hash_value = Column(String)  # phash for images, SHA-256 for videos
+	capture_time = Column(DateTime)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Timetable(Base):
+	__tablename__ = "timetable"
+
+	id = Column(Integer, primary_key=True, index=True)
+	day_of_week = Column(String, index=True) # e.g. Monday, Tuesday
+	start_time = Column(String) # e.g. 09:00
+	subject = Column(String)
+	class_name = Column(String)
+	created_at = Column(DateTime, default=datetime.utcnow)
+
  
