@@ -79,7 +79,17 @@ function ProcessingScreen({ navigation, route }) {
         navigation.replace(ROUTES.ERROR, {
           error: error.message,
           canRetry: true,
-          retryRoute: ROUTES.SCAN
+          retryRoute: ROUTES.SCAN,
+          result: {
+            reasons: [error.message],
+            details: { location: false, wifi: false, photo: false },
+          },
+          validationResult: {
+            qr: { status: progress.qr === 'done' ? 'passed' : 'failed' },
+            location: { status: progress.gps === 'done' ? 'passed' : 'failed' },
+            wifi: { status: progress.wifi === 'done' ? 'passed' : 'failed', reason: 'Check campus WiFi connection' },
+            camera: { status: progress.media === 'done' ? 'passed' : 'failed', reason: error.message, type: 'photo' },
+          },
         });
       }
     };

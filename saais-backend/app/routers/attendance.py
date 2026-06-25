@@ -10,6 +10,31 @@ from app.database import get_db
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
+# --------------- Scoring weights (must sum to 100) ---------------
+QR_SCORE = 25
+GPS_SCORE_FULL = 20
+GPS_SCORE_WARN = 15       # partial credit when GPS accuracy is poor
+WIFI_SCORE = 20
+MEDIA_SCORE = 20
+DEVICE_SCORE = 15
+
+# GPS geofence
+GPS_PASS_DISTANCE = 1000.0          # metres — hard pass
+GPS_WARN_DISTANCE_FACTOR = 1.1     # 10 % buffer for soft pass
+GPS_ACCURACY_WARN = 50.0           # metres — max GPS error allowed for soft pass
+
+# Attendance status thresholds
+VALID_SCORE = 75
+SUSPICIOUS_SCORE = 60
+
+# Alert thresholds
+MIN_ATTENDANCE_PCT = 75.0
+SCORE_DROP_THRESHOLD = 25.0
+
+# Timezone: India Standard Time offset from UTC
+IST_OFFSET = timedelta(hours=5, minutes=30)
+# -----------------------------------------------------------------
+
 
 def get_client_ip(request: Request) -> str:
 	x_forwarded_for = request.headers.get("x-forwarded-for")
@@ -117,7 +142,7 @@ def submit_attendance(
 			device_id=payload.device_id,
 			confidence_score=0.0,
 			status=status_value,
-			marked_at=datetime.utcnow() + timedelta(hours=5, minutes=30),
+			marked_at=datetime.utcnow() + IST_OFFSET,
 		)
 		db.add(record)
 		db.commit()
@@ -146,7 +171,8 @@ def submit_attendance(
 			"attendanceId": f"ATT-{record.id}",
 			"message": message,
 			"distance": 0.0,
-			"room_name": session.room_name or "Classroom"
+			"room_name": session.room_name or "Classroom",
+			"allowed_range": int(GPS_PASS_DISTANCE)
 		}
 
 	score = 0
@@ -157,96 +183,55 @@ def submit_attendance(
 	device_valid = False
 	media_valid = bool(payload.media_url) if hasattr(payload, 'media_url') else True
 
-	# 1) QR Validation (25 pts)
+	# 1) QR Validation
 	if payload.qr_token and session.qr_token == payload.qr_token:
 		if not session.qr_expires_at or datetime.utcnow() <= session.qr_expires_at:
 			qr_valid = True
-			score += 25
+			score += QR_SCORE
 
-	# Check if StudentReference exists
-	reference = (
-		db.query(models.StudentReference)
-		.filter(models.StudentReference.student_id == current_user.id)
-		.first()
-	)
-
-	# 2) GPS Validation (20 pts)
+	# 2) GPS Validation — always compared against the faculty's live classroom position
 	distance = -1.0
-	if reference:
-		# Subsequent check: validate against registered reference location
-		if payload.gps_lat == 0 and payload.gps_lon == 0:
-			gps_valid = False
-			distance = -1.0
-		else:
-			distance = haversine(
-				payload.gps_lat,
-				payload.gps_lon,
-				reference.latitude,
-				reference.longitude,
-			)
+	geofence = GPS_PASS_DISTANCE
+	warn_fence = geofence * GPS_WARN_DISTANCE_FACTOR
 
-			if distance <= 1000.0:  # 1km geofence
-				gps_valid = True
-				score += 20
-			elif distance <= 1100.0 and payload.gps_accuracy and payload.gps_accuracy <= 50.0:
-				gps_valid = True
-				gps_warning = True
-				score += 15
+	if payload.gps_lat == 0 and payload.gps_lon == 0:
+		gps_valid = False
+	elif not session.classroom_lat or not session.classroom_lon:
+		# Faculty didn't capture GPS when starting session — skip check
+		gps_valid = True
+		score += GPS_SCORE_FULL
 	else:
-		# First check: validate against classroom location
-		if payload.gps_lat == 0 and payload.gps_lon == 0:
-			gps_valid = False
-			distance = -1.0
-		else:
-			distance = haversine(
-				payload.gps_lat,
-				payload.gps_lon,
-				session.classroom_lat,
-				session.classroom_lon,
-			)
-			
-			if distance <= 1000.0:  # 1km geofence
-				gps_valid = True
-				score += 20
-			elif distance <= 1100.0 and payload.gps_accuracy and payload.gps_accuracy <= 50.0:
-				gps_valid = True
-				gps_warning = True
-				score += 15
+		distance = haversine(
+			payload.gps_lat,
+			payload.gps_lon,
+			session.classroom_lat,
+			session.classroom_lon,
+		)
+		if distance <= geofence:
+			gps_valid = True
+			score += GPS_SCORE_FULL
+		elif distance <= warn_fence and payload.gps_accuracy and payload.gps_accuracy <= GPS_ACCURACY_WARN:
+			gps_valid = True
+			gps_warning = True
+			score += GPS_SCORE_WARN
 
-	# 3) WiFi Validation (20 pts)
-	if reference:
-		# Subsequent check: validate against reference WiFi
-		if not reference.wifi_ssid:
-			wifi_valid = True
-			score += 20
-		elif not payload.wifi_ssid or payload.wifi_ssid.lower() in ("unavailable", "unknown", ""):
-			wifi_valid = True
-			score += 20
-		else:
-			ssid_match = (payload.wifi_ssid.lower() == reference.wifi_ssid.lower())
-			bssid_match = False
-			if payload.bssid and reference.wifi_bssid:
-				bssid_match = (payload.bssid.lower() == reference.wifi_bssid.lower())
-			
-			if ssid_match or bssid_match:
-				wifi_valid = True
-				score += 20
+	# 3) WiFi Validation — always compared against the faculty's session WiFi
+	if not session.wifi_ssid or session.wifi_ssid.strip() == '':
+		# Faculty session has no WiFi configured — skip check
+		wifi_valid = True
+		score += WIFI_SCORE
+	elif not payload.wifi_ssid or payload.wifi_ssid.lower() in ("unavailable", "unknown", ""):
+		# Student on web or device can't read WiFi — award points (can't enforce)
+		wifi_valid = True
+		score += WIFI_SCORE
+	elif payload.wifi_ssid.lower() == session.wifi_ssid.lower():
+		wifi_valid = True
+		score += WIFI_SCORE
 	else:
-		# First check: validate against session WiFi
-		if not session.wifi_ssid:
-			wifi_valid = True
-			score += 20
-		elif not payload.wifi_ssid or payload.wifi_ssid.lower() in ("unavailable", "unknown", ""):
-			wifi_valid = True
-			score += 20
-		elif session.wifi_ssid and payload.wifi_ssid.lower() == session.wifi_ssid.lower():
-			wifi_valid = True
-			score += 20
-		else:
-			wifi_valid = False
+		wifi_valid = False
 
-	# 4) Media Validation & Liveness (20 pts)
-	if not payload.media_url:
+	# 4) Media Validation & Liveness
+	if not payload.media_url or payload.media_url == 'no_photo':
 		media_valid = True  # don't fail, but skip score
 	else:
 		media_rec = db.query(models.MediaRecord).filter(
@@ -254,56 +239,60 @@ def submit_attendance(
 			models.MediaRecord.student_id == current_user.id
 		).first()
 		if media_rec:
-			from app.services.face_service import verify_face, check_liveness
-			if not current_user.profile_photo_url:
-				# Cannot verify if student has no profile photo
+			try:
+				from app.services.face_service import verify_face, check_liveness
+				face_service_available = True
+			except Exception:
+				face_service_available = False
+
+			if not face_service_available:
+				# deepface/cv2 not installed — award points so attendance isn't blocked
+				media_valid = True
+				score += MEDIA_SCORE
+			elif not current_user.profile_photo_url:
 				media_valid = False
 			else:
 				profile_path = current_user.profile_photo_url.lstrip("/")
 				attendance_path = media_rec.filepath
-				
+
 				is_live = check_liveness(attendance_path)
 				is_match, dist_face = verify_face(profile_path, attendance_path)
-				
+
 				if is_live and is_match:
 					media_valid = True
-					score += 20
+					score += MEDIA_SCORE
 				else:
 					media_valid = False
 
-	# 5) Device Validation (15 pts)
+	# 5) Device Validation — binding established at registration
 	binding = (
 		db.query(models.DeviceBinding)
 		.filter(models.DeviceBinding.student_id == current_user.id)
 		.first()
 	)
-	if binding:
-		if binding.device_id == payload.device_id:
-			device_valid = True
-			score += 15
-		else:
-			# Strict lockout device verification mismatch
-			device_valid = False
-	else:
-		binding = models.DeviceBinding(
-			student_id=current_user.id,
-			device_id=payload.device_id,
-		)
-		db.add(binding)
+	if not binding:
+		# Legacy account (registered before device binding was enforced) — bind now
+		db.add(models.DeviceBinding(student_id=current_user.id, device_id=payload.device_id))
 		device_valid = True
-		score += 15
+		score += DEVICE_SCORE
+	elif binding.device_id == payload.device_id:
+		device_valid = True
+		score += DEVICE_SCORE
+	else:
+		device_valid = False
 
-	# Status thresholds
-	# 75-100: valid
-	# 60-74: suspicious
-	# Below 60: rejected
+	# Status determination:
+	#   media failure → unconditional reject (identity cannot be confirmed)
+	#   score >= VALID_SCORE and no GPS warning → valid
+	#   score >= SUSPICIOUS_SCORE → suspicious (flagged for review)
+	#   score < SUSPICIOUS_SCORE → rejected (too many failures)
 	if not media_valid:
 		status_value = "rejected"
 		message = "Attendance rejected: Face verification failed. You are not the registered student."
-	elif score >= 75 and not gps_warning:
+	elif score >= VALID_SCORE and not gps_warning:
 		status_value = "valid"
 		message = "Attendance marked successfully"
-	elif score >= 60:
+	elif score >= SUSPICIOUS_SCORE:
 		status_value = "suspicious"
 		message = "Attendance flagged: One or more security factors failed or low GPS accuracy"
 	else:
@@ -319,7 +308,7 @@ def submit_attendance(
 		device_id=payload.device_id,
 		confidence_score=score,
 		status=status_value,
-		marked_at=datetime.utcnow() + timedelta(hours=5, minutes=30),
+		marked_at=datetime.utcnow() + IST_OFFSET,
 	)
 	db.add(record)
 
@@ -328,27 +317,13 @@ def submit_attendance(
 	if faculty and current_user not in faculty.faculty_of:
 		faculty.faculty_of.append(current_user)
 
-	# 7) Locked-in Parameters Creation (On first successful attendance)
-	if not reference and status_value == "valid":
-		new_reference = models.StudentReference(
-			student_id=current_user.id,
-			wifi_ssid=payload.wifi_ssid,
-			wifi_bssid=payload.bssid,
-			latitude=payload.gps_lat,
-			longitude=payload.gps_lon,
-			geofence_radius=600.0,
-			faculty_wifi_ssid=session.wifi_ssid,
-			student_wifi_ssid=payload.wifi_ssid
-		)
-		db.add(new_reference)
-
 	db.commit()
 	db.refresh(record)
 
 	# --- Automatic Alerts Generation (Module 5) ---
 	from app.services.alert_service import create_alert
 
-	# Alert 1: Student Alert: Attendance Below 75%
+	# Alert 1: Student Alert: Attendance Below threshold
 	all_records = (
 		db.query(models.AttendanceRecord)
 		.filter(models.AttendanceRecord.student_id == current_user.id)
@@ -357,12 +332,12 @@ def submit_attendance(
 	total_count = len(all_records)
 	present_count = len([r for r in all_records if r.status == "valid"])
 	percentage = (present_count / total_count) * 100 if total_count > 0 else 0
-	if percentage < 75.0:
+	if percentage < MIN_ATTENDANCE_PCT:
 		create_alert(
 			db,
 			current_user.id,
 			"low_attendance",
-			f"Your attendance has dropped below 75%. Current attendance: {round(percentage, 1)}%"
+			f"Your attendance has dropped below {int(MIN_ATTENDANCE_PCT)}%. Current attendance: {round(percentage, 1)}%"
 		)
 
 	# Alert 2: Faculty Alert: Suspicious Attendance Detected
@@ -396,7 +371,7 @@ def submit_attendance(
 	)
 	if prev_records:
 		avg_prev_score = sum(r.confidence_score for r in prev_records) / len(prev_records)
-		if avg_prev_score - score >= 25.0:
+		if avg_prev_score - score >= SCORE_DROP_THRESHOLD:
 			create_alert(
 				db,
 				session.faculty_id,
@@ -433,8 +408,9 @@ def submit_attendance(
 		},
 		"attendanceId": f"ATT-{record.id}",
 		"message": message,
-		"distance": round(distance, 1) if 'distance' in locals() else 0.0,
+		"distance": round(distance, 1) if distance >= 0 else -1.0,
 		"gps_warning": gps_warning,
-		"room_name": session.room_name or "Classroom"
+		"room_name": session.room_name or "Classroom",
+		"allowed_range": int(geofence)
 	}
  

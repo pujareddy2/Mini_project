@@ -2,6 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { BASE_URL } from '../config';
 
+async function safeJson(response) {
+  const ct = response.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    return response.json();
+  }
+  const text = await response.text();
+  throw new Error(text || `Server error ${response.status}`);
+}
+
 export const uploadMedia = async (photoUri, mediaType = 'photo') => {
   try {
     if (!photoUri || photoUri === 'no_photo') return 'no_photo';
@@ -31,7 +40,7 @@ export const uploadMedia = async (photoUri, mediaType = 'photo') => {
       body: formData
     });
 
-    const data = await response.json();
+    const data = await safeJson(response);
 
     if (!response.ok) {
       throw new Error(data.detail || 'Media upload failed');
@@ -56,7 +65,7 @@ export const submitAttendance = async (payload) => {
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
+    const data = await safeJson(response);
 
     if (!response.ok) {
       throw new Error(data.detail || 'Attendance submission failed');

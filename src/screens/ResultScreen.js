@@ -138,7 +138,7 @@ function ResultScreen({ navigation, route }) {
             <Text style={styles.sectionTitle}>Confidence Score</Text>
             <View style={{ alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
               <Text style={{ color: '#0f172a', fontSize: 32, fontWeight: '700', letterSpacing: -1 }}>{Math.round(confidence)}%</Text>
-              <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '500', marginBottom: 6 }}>{confidence >= 95 ? 'Excellent match' : 'Poor match'}</Text>
+              <Text style={{ color: '#64748b', fontSize: 13, fontWeight: '500', marginBottom: 6 }}>{{ valid: 'Verified match', suspicious: 'Partial match', rejected: 'Failed match' }[status] ?? 'Unknown'}</Text>
             </View>
             <AnimatedProgress value={confidenceAnim} barColor={statusMeta.accent} />
           </Card>
@@ -155,9 +155,9 @@ function ResultScreen({ navigation, route }) {
               title={flags.location ? (attendanceResult.gps_warning ? '⚠ Location Verified (Low GPS Accuracy)' : '✓ Location Verified') : (attendanceResult.distance === -1 ? '✗ Location Error' : '✗ Outside Campus Range')}
               status={flags.location ? (attendanceResult.gps_warning ? 'limited' : 'passed') : 'failed'}
               subtitle={flags.location ? `Room: ${attendanceResult.room_name || 'Classroom'}` : (attendanceResult.distance === -1 ? 'Could not fetch GPS' : 'Distance limit exceeded')}
-              extraInfo={attendanceResult.distance === -1 
-                ? 'Device failed to capture GPS coordinates' 
-                : `Distance: ${attendanceResult.distance ?? 'N/A'}m (Allowed: 1000m)`}
+              extraInfo={attendanceResult.distance === -1
+                ? 'Device failed to capture GPS coordinates'
+                : `Distance: ${attendanceResult.distance ?? 'N/A'}m${attendanceResult.allowed_range != null ? ` (Allowed: ${attendanceResult.allowed_range}m)` : ''}`}
             />
             <ValidationItem
               title={flags.wifi ? 'WiFi Verified' : 'WiFi Failed'}
@@ -169,7 +169,7 @@ function ResultScreen({ navigation, route }) {
               title={flags.media ? 'Media Verified' : 'Media Failed'}
               status={statusFromFlag(flags.media)}
               subtitle={flags.media ? 'Camera/media accepted' : 'Media verification rejected'}
-              extraInfo={flags.media ? 'Face/media validation passed' : 'Failure reason: Duplicate or unclear media'}
+              extraInfo={flags.media ? 'Face/media validation passed' : `Failure reason: ${attendanceResult.message || 'Face verification failed'}`}
             />
             <ValidationItem
               title={flags.device ? 'Device Verified' : 'Device Failed'}

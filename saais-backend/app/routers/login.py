@@ -24,6 +24,9 @@ from fastapi import Form, UploadFile, File
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+GPS_PASS_DISTANCE = 1000.0  # metres — default geofence written to StudentReference
+
+
 @router.post("/register")
 async def register_user(
 	name: str = Form(...),
@@ -31,21 +34,42 @@ async def register_user(
 	password: str = Form(...),
 	role: str = Form("student"),
 	profile_photo: UploadFile = File(...),
+	device_id: Optional[str] = Form(None),
+	wifi_ssid: Optional[str] = Form(None),
+	wifi_bssid: Optional[str] = Form(None),
+	gps_lat: Optional[float] = Form(None),
+	gps_lon: Optional[float] = Form(None),
 	db: Session = Depends(get_db)
 ):
-	existing_user = db.query(models.User).filter(models.User.email == email).first()
-	if existing_user:
+	email = email.strip().lower()
+
+	# Reject duplicate email
+	if db.query(models.User).filter(models.User.email == email).first():
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail="Email already registered",
 		)
 
+	# Reject duplicate device — one device may only register one account
+	if device_id:
+		existing_binding = (
+			db.query(models.DeviceBinding)
+			.filter(models.DeviceBinding.device_id == device_id)
+			.first()
+		)
+		if existing_binding:
+			raise HTTPException(
+				status_code=status.HTTP_400_BAD_REQUEST,
+				detail="This device is already registered to another account. Each device can only hold one student account.",
+			)
+
 	if not profile_photo or not getattr(profile_photo, "filename", None):
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
-			detail="Profile photo is required",
+			detail="Profile photo is required for face verification during attendance",
 		)
 
+	# Save profile photo
 	filename_lower = profile_photo.filename.lower()
 	ext = filename_lower.split(".")[-1] if "." in filename_lower else "jpg"
 	filename = f"profile_{uuid.uuid4()}.{ext}"
@@ -55,6 +79,7 @@ async def register_user(
 		f.write(contents)
 	profile_photo_url = f"/{UPLOAD_DIR}/{filename}"
 
+	# Create user
 	user = models.User(
 		name=name,
 		email=email,
@@ -66,6 +91,25 @@ async def register_user(
 	db.commit()
 	db.refresh(user)
 
+	# Bind device to this account at registration time
+	if device_id:
+		db.add(models.DeviceBinding(
+			student_id=user.id,
+			device_id=device_id,
+		))
+
+	# Store registration-time WiFi and GPS as the student's reference snapshot
+	if role == "student":
+		db.add(models.StudentReference(
+			student_id=user.id,
+			wifi_ssid=wifi_ssid,
+			wifi_bssid=wifi_bssid,
+			latitude=gps_lat,
+			longitude=gps_lon,
+			geofence_radius=GPS_PASS_DISTANCE,
+		))
+
+	db.commit()
 	return {"message": "User registered successfully"}
 
 
@@ -109,7 +153,7 @@ def student_login(
 	db: Session = Depends(get_db),
 ):
 	user = db.query(models.User).filter(
-		models.User.email == payload.email
+		models.User.email == payload.email.strip().lower()
 	).first()
 	
 	if not user or not verify_password(payload.password, user.password_hash):
@@ -118,25 +162,18 @@ def student_login(
 			detail="Invalid email or password",
 		)
 	
-	# Enforce device locking for students
+	# Enforce device check for students — binding was established at registration
 	if user.role == "student" and payload.device_id:
-		binding = db.query(models.DeviceBinding).filter(
-			models.DeviceBinding.student_id == user.id
-		).first()
-		
-		if binding:
-			if binding.device_id != payload.device_id:
-				raise HTTPException(
-					status_code=status.HTTP_400_BAD_REQUEST,
-					detail="This student account is bound to another device. You can only log in from your registered device.",
-				)
-		else:
-			new_binding = models.DeviceBinding(
-				student_id=user.id,
-				device_id=payload.device_id,
+		binding = (
+			db.query(models.DeviceBinding)
+			.filter(models.DeviceBinding.student_id == user.id)
+			.first()
+		)
+		if binding and binding.device_id != payload.device_id:
+			raise HTTPException(
+				status_code=status.HTTP_400_BAD_REQUEST,
+				detail="This account is registered to a different device. Log in from your registered device.",
 			)
-			db.add(new_binding)
-			db.commit()
 
 	access_token = create_access_token({"sub": user.email})
 	

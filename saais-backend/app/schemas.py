@@ -79,13 +79,13 @@ class AttendanceResponse(BaseModel):
 	status: str
 	confidence_score: float
 	marked_at: datetime
-	distance: Optional[float] = None
+	distance: Optional[float] = 0.0
 	gps_warning: Optional[bool] = False
 	flags: dict
 	attendanceId: str
 	message: str
-	distance: Optional[float] = 0.0
 	room_name: Optional[str] = "Classroom"
+	allowed_range: Optional[int] = None
 
 	model_config = ConfigDict(from_attributes=True)
  

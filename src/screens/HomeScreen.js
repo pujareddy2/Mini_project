@@ -12,6 +12,7 @@ import ROUTES from '../navigation/routes';
 import { getDashboardData } from '../services/dashboardService';
 import { getFacultyStudents } from '../services/facultyService';
 import { captureGPS } from '../services/validationService';
+import { captureWiFi } from '../services/networkService';
 import { COLORS, RADIUS, SPACING } from '../theme';
 import STORAGE_KEYS from '../utils/storageKeys';
 
@@ -32,6 +33,11 @@ function HomeScreen({ navigation }) {
   const [facultyStudents, setFacultyStudents] = useState([]);
   const [isRefreshingStudents, setIsRefreshingStudents] = useState(false);
   const [roomName, setRoomName] = useState('Hall A');
+  const [subjectName, setSubjectName] = useState('');
+
+  const QR_REFRESH_SECONDS = 60;
+  const SESSION_DURATION_HOURS = 2;
+  const MIN_ATTENDANCE_PCT = 75;
 
   const loadDashboard = async () => {
     setIsLoadingDashboard(true);
@@ -83,7 +89,7 @@ function HomeScreen({ navigation }) {
       return '#0f766e';
     }
 
-    if (percentage >= 75) {
+    if (percentage >= MIN_ATTENDANCE_PCT) {
       return '#b45309';
     }
 
@@ -120,8 +126,8 @@ function HomeScreen({ navigation }) {
   async function handleStartSession() {
     setIsStartingSession(true);
     try {
-      // Capture faculty's current location to set the classroom anchor
-      const gps = await captureGPS();
+      const [gps, wifi] = await Promise.all([captureGPS(), captureWiFi()]);
+      const endTime = new Date(Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000).toISOString();
 
       const token = await AsyncStorage.getItem('token');
       const response = await fetch(`${BASE_URL}/session/start`, {
@@ -131,19 +137,19 @@ function HomeScreen({ navigation }) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          subject: 'Demo Class',
-          end_time: '2026-12-31T23:59:59',
+          subject: subjectName.trim() || roomName.trim() || 'Class',
+          end_time: endTime,
           classroom_lat: gps.latitude || 0.0,
           classroom_lon: gps.longitude || 0.0,
           room_name: roomName,
-          wifi_ssid: 'D-Link_DIR-615 3',
+          wifi_ssid: wifi.ssid || '',
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Failed to start session');
       setFacultySessionId(data.id);
       setFacultyQrToken(data.qr_token);
-      setCountdown(60);
+      setCountdown(QR_REFRESH_SECONDS);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -174,7 +180,7 @@ function HomeScreen({ navigation }) {
         setCountdown((prev) => {
           if (prev <= 1) {
             refreshQR();
-            return 60;
+            return QR_REFRESH_SECONDS;
           }
           return prev - 1;
         });
@@ -292,6 +298,27 @@ function HomeScreen({ navigation }) {
                   </View>
                   {!facultySessionId ? (
                     <View style={{ width: '100%', gap: 10 }}>
+                      <View style={{ gap: 4 }}>
+                        <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
+                          SUBJECT NAME
+                        </Text>
+                        <View
+                          style={{
+                            backgroundColor: '#f1f5f9',
+                            borderRadius: 8,
+                            padding: 12,
+                            borderWidth: 1,
+                            borderColor: '#e2e8f0',
+                          }}
+                        >
+                          <TextInput
+                            value={subjectName}
+                            onChangeText={setSubjectName}
+                            placeholder="e.g. Data Structures, Physics"
+                            style={{ fontSize: 16, color: '#0f172a' }}
+                          />
+                        </View>
+                      </View>
                       <View style={{ gap: 4 }}>
                         <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
                           CLASSROOM / ROOM NAME
@@ -457,7 +484,7 @@ function HomeScreen({ navigation }) {
               {dashboardData.total_classes > 0 && (
                 <ProgressBar value={dashboardData.attendance_percentage} />
               )}
-              <Text style={styles.minRequired}>Minimum required: 75%</Text>
+              <Text style={styles.minRequired}>Minimum required: {MIN_ATTENDANCE_PCT}%</Text>
             </Card>
 
             <View style={styles.navStack}>

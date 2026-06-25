@@ -7,10 +7,8 @@ export const verifyQR = async (qrData) => {
 
     let payload;
     try {
-      // If the QR code contains JSON string like {"qr_token": "...", "session_id": 1}
       payload = JSON.parse(qrData);
     } catch {
-      // Fallback if it's just the raw token string
       payload = { qr_token: qrData };
     }
 
@@ -23,7 +21,10 @@ export const verifyQR = async (qrData) => {
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
+    const ct = response.headers.get('content-type') || '';
+    const data = ct.includes('application/json')
+      ? await response.json()
+      : await response.text().then(t => { throw new Error(t || `Server error ${response.status}`); });
 
     if (!response.ok) {
       throw new Error(data.detail || 'QR validation failed');

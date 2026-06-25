@@ -50,8 +50,15 @@ export const registerStudent = async (studentProfile) => {
     formData.append('name', studentProfile.name);
     formData.append('email', studentProfile.email);
     formData.append('password', studentProfile.password);
-    formData.append('role', 'student');
-    
+    formData.append('role', studentProfile.role || 'student');
+
+    // Device, WiFi, GPS captured at registration time
+    if (studentProfile.deviceId) formData.append('device_id', String(studentProfile.deviceId));
+    if (studentProfile.wifiSsid) formData.append('wifi_ssid', String(studentProfile.wifiSsid));
+    if (studentProfile.wifiBssid) formData.append('wifi_bssid', String(studentProfile.wifiBssid));
+    if (studentProfile.gpsLat != null) formData.append('gps_lat', String(studentProfile.gpsLat));
+    if (studentProfile.gpsLon != null) formData.append('gps_lon', String(studentProfile.gpsLon));
+
     if (studentProfile.profilePhotoUri) {
       const uri = studentProfile.profilePhotoUri;
       if (Platform.OS === 'web') {
@@ -61,24 +68,21 @@ export const registerStudent = async (studentProfile) => {
       } else {
         const filename = uri.split('/').pop();
         const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : `image`;
-        formData.append('profile_photo', {
-          uri,
-          name: filename,
-          type,
-        });
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+        formData.append('profile_photo', { uri, name: filename, type });
       }
     }
 
     const response = await fetch(`${BASE_URL}/auth/register`, {
       method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: { 'Accept': 'application/json' },
       body: formData,
     });
 
-    const data = await response.json();
+    const ct = response.headers.get('content-type') || '';
+    const data = ct.includes('application/json')
+      ? await response.json()
+      : await response.text().then(t => { throw new Error(t || `Server error ${response.status}`); });
 
     if (!response.ok) {
       throw new Error(data.detail || 'Registration failed');

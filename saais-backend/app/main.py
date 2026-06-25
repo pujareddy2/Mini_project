@@ -1,7 +1,7 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.database import Base, engine
 from app.routers import analytics, attendance, login, media, session, faculty
@@ -42,6 +42,13 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+	return JSONResponse(
+		status_code=500,
+		content={"detail": str(exc)},
+	)
 
 @app.on_event("startup")
 def on_startup():

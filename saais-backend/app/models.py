@@ -84,7 +84,7 @@ class DeviceBinding(Base):
 
 	id = Column(Integer, primary_key=True, index=True)
 	student_id = Column(Integer, ForeignKey("users.id"), unique=True)
-	device_id = Column(String)
+	device_id = Column(String, unique=True, index=True)  # enforces 1 student per device
 	bound_at = Column(DateTime, default=datetime.utcnow)
 
 
